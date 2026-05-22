@@ -6,9 +6,9 @@
   <title>Maruti Namkeen Costing</title>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; font-family:'Sora',sans-serif; -webkit-tap-highlight-color:transparent; }
-    body { background:#f8f4ef; overscroll-behavior:none; }
-    input,select,button { font-family:'Sora',sans-serif; }
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Sora',sans-serif; -webkit-tap-highlight-color:transparent; font-size:15px; }
+    body { background:#f8f4ef; overscroll-behavior:none; font-size:15px; }
+    input,select,button { font-family:'Sora',sans-serif; font-size:15px; }
     input:focus,select:focus { outline:2px solid #e8851b; outline-offset:1px; }
     ::-webkit-scrollbar { width:3px; }
     ::-webkit-scrollbar-thumb { background:#e8851b; border-radius:2px; }
@@ -46,6 +46,104 @@ const db = firebase.firestore();
 const FV = firebase.firestore.FieldValue;
 
 const C = { RM:'rawMaterials', SUB:'subRecipes', PROD:'products', VAR:'packVariants', OH:'overhead' };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTH CONFIG — Change this password in the file before deploying
+// ═══════════════════════════════════════════════════════════════════════════
+const APP_PASSWORD = "Curvv@2223!";   // ← Replace with your actual password
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// ─── Login Screen ───────────────────────────────────────────────────────────
+function LoginScreen({onLogin}) {
+  const [pw, setPw]       = useState('');
+  const [error, setError] = useState('');
+  const [show, setShow]   = useState(false);
+
+  const attempt = () => {
+    if(pw === APP_PASSWORD) {
+      onLogin();
+    } else {
+      setError('Incorrect password. Try again.');
+      setPw('');
+      setTimeout(()=>setError(''),3000);
+    }
+  };
+
+  const handleKey = e => { if(e.key==='Enter') attempt(); };
+
+  return (
+    <div style={{
+      minHeight:'100vh', background:'linear-gradient(135deg,#1c1c2e 0%,#2d1810 100%)',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'20px'
+    }}>
+      <div style={{
+        background:'#fff', borderRadius:'20px', padding:'40px 36px',
+        width:'100%', maxWidth:'400px', boxShadow:'0 25px 60px rgba(0,0,0,0.4)'
+      }}>
+        {/* Logo */}
+        <div style={{textAlign:'center', marginBottom:'28px'}}>
+          <div style={{fontSize:'52px', marginBottom:'10px'}}>🍘</div>
+          <div style={{fontWeight:'800', fontSize:'20px', color:'#1c1c1c'}}>Maruti Namkeen</div>
+          <div style={{fontSize:'13px', color:'#e8851b', fontWeight:'700', letterSpacing:'1.5px', textTransform:'uppercase', marginTop:'4px'}}>Costing System</div>
+        </div>
+
+        {/* Password field */}
+        <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+          <div style={{fontSize:'12px', fontWeight:'700', color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.8px'}}>Password</div>
+          <div style={{position:'relative'}}>
+            <input
+              type={show?'text':'password'}
+              value={pw}
+              onChange={e=>{setPw(e.target.value); setError('');}}
+              onKeyDown={handleKey}
+              placeholder="Enter your password"
+              autoFocus
+              style={{
+                width:'100%', border:'2px solid #e5e7eb', borderRadius:'10px',
+                padding:'13px 44px 13px 16px', fontSize:'15px',
+                fontFamily:'Sora,sans-serif', color:'#1c1c1c',
+                transition:'border-color 0.2s',
+                borderColor: error?'#dc2626':'#e5e7eb'
+              }}
+            />
+            <button
+              onClick={()=>setShow(s=>!s)}
+              style={{
+                position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)',
+                background:'none', border:'none', cursor:'pointer', fontSize:'18px', color:'#9ca3af'
+              }}
+            >{show?'🙈':'👁️'}</button>
+          </div>
+
+          {error && (
+            <div style={{background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'8px', padding:'10px 14px', fontSize:'13px', color:'#dc2626', fontWeight:'600'}}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          <button
+            onClick={attempt}
+            disabled={!pw}
+            style={{
+              background: pw?'linear-gradient(135deg,#e8851b,#f59e0b)':'#f3f4f6',
+              color: pw?'#fff':'#9ca3af',
+              border:'none', borderRadius:'10px', padding:'14px',
+              fontSize:'15px', fontWeight:'800', cursor:pw?'pointer':'default',
+              fontFamily:'Sora,sans-serif', marginTop:'4px',
+              transition:'all 0.2s'
+            }}
+          >
+            Unlock App →
+          </button>
+        </div>
+
+        <div style={{textAlign:'center', marginTop:'20px', fontSize:'12px', color:'#9ca3af'}}>
+          🔒 Internal use only — Maruti Namkeen &amp; Snacks
+        </div>
+      </div>
+    </div>
+  );
+}
 const today = () => new Date().toISOString().split('T')[0];
 const f2 = v => (Number(v)||0).toFixed(2);
 const f1 = v => (Number(v)||0).toFixed(1);
@@ -1449,6 +1547,8 @@ function Settings({oh}) {
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════════════════
 function App() {
+  const [authed, setAuthed]   = useState(false);
+  const [lastActive, setLastActive] = useState(Date.now());
   const [tab,setTab]=useState('dashboard');
   const [rms,rmsL]     = useCol(C.RM);
   const [subs,subsL]   = useCol(C.SUB);
@@ -1457,6 +1557,20 @@ function App() {
   const oh             = useOverhead();
 
   const loading = rmsL||subsL||prodsL||varsL;
+
+  // ── Inactivity auto-lock ─────────────────────────────────────────────
+  useEffect(()=>{
+    if(!authed) return;
+    const events = ['mousemove','mousedown','keydown','touchstart','scroll','click'];
+    const reset = ()=>setLastActive(Date.now());
+    events.forEach(e=>window.addEventListener(e,reset,{passive:true}));
+    const timer = setInterval(()=>{
+      if(Date.now()-lastActive >= INACTIVITY_TIMEOUT_MS) setAuthed(false);
+    }, 10000);
+    return ()=>{ events.forEach(e=>window.removeEventListener(e,reset)); clearInterval(timer); };
+  },[authed, lastActive]);
+
+  if(!authed) return <LoginScreen onLogin={()=>{ setAuthed(true); setLastActive(Date.now()); }} />;
 
   const navToProduct = prod => { setTab('products'); setTimeout(()=>window.__navProd&&window.__navProd(prod),50); };
 
@@ -1490,6 +1604,15 @@ function App() {
               {rms.length} RM · {subs.length} Sub-recipes · {prods.length} Products · {vars.length} Variants
             </div>
           </div>
+          <button
+            onClick={()=>{ if(confirm('Log out of Maruti Costing?')) setAuthed(false); }}
+            style={{
+              background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)',
+              borderRadius:'8px', padding:'6px 14px', color:'#fff', cursor:'pointer',
+              fontSize:'12px', fontWeight:'700', fontFamily:'Sora,sans-serif',
+              display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap'
+            }}
+          >🔒 Logout</button>
         </div>
       </div>
 
