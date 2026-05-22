@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Maruti Namkeen Costing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Sora',sans-serif; -webkit-tap-highlight-color:transparent; }
+    body { background:#f8f4ef; overscroll-behavior:none; }
+    input,select,button { font-family:'Sora',sans-serif; }
+    input:focus,select:focus { outline:2px solid #e8851b; outline-offset:1px; }
+    ::-webkit-scrollbar { width:3px; }
+    ::-webkit-scrollbar-thumb { background:#e8851b; border-radius:2px; }
+    .mono { font-family:'JetBrains Mono',monospace; }
+    input[type=number]::-webkit-inner-spin-button { opacity:1; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Firebase 10 Compat -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<!-- React 18 -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIREBASE CONFIG — Replace with your project credentials
+// ═══════════════════════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey:            "AIzaSyA9nnMLZuHFB8Rdv3PQIX7nyk1gXYzXtnQ",
+  authDomain:        "maruti-costing.firebaseapp.com",
+  projectId:         "maruti-costing",
+  storageBucket:     "maruti-costing.firebasestorage.app",
+  messagingSenderId: "237752171355",
+  appId:             "1:237752171355:web:61fb7c4f68b75086abf87e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const FV = firebase.firestore.FieldValue;
+
+const C = { RM:'rawMaterials', SUB:'subRecipes', PROD:'products', VAR:'packVariants', OH:'overhead' };
+const today = () => new Date().toISOString().split('T')[0];
+const f2 = v => (Number(v)||0).toFixed(2);
+const f1 = v => (Number(v)||0).toFixed(1);
+const num = v => Number(v)||0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CALCULATION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+function calcSubRecipe(sr, rms) {
+  if (!sr?.bom?.length || !sr.outputKg) return { costPerKg:0, taxPerKg:0 };
+  let cost=0, tax=0;
+  for (const item of sr.bom) {
+    const rm = rms.find(r=>r.id===item.refId);
+    if (rm) {
+      cost += num(item.qtyKg) * num(rm.currentRate);
+      tax  += num(item.qtyKg) * num(rm.currentRate) * (num(rm.taxPct)/100);
+    }
+  }
+  return { costPerKg: cost/sr.outputKg, taxPerKg: tax/sr.outputKg };
+}
+
+function calcProduct(product, rms, subs) {
+  if (!product?.bom?.length) return null;
+  let bomCost=0, bomTax=0;
+  const bomRows = product.bom.map(item => {
+    let rate=0, taxRate=0;
+    if (item.type==='rm') {
+      const rm = rms.find(r=>r.id===item.refId);
+      if (rm) { rate=num(rm.currentRate); taxRate=num(rm.currentRate)*num(rm.taxPct)/100; }
+    } else {
+      const sr = subs.find(s=>s.id===item.refId);
+      if (sr) { const c=calcSubRecipe(sr,rms); rate=c.costPerKg; taxRate=c.taxPerKg; }
+    }
+    const cost=num(item.qtyKg)*rate, taxAmt=num(item.qtyKg)*taxRate;
+    bomCost+=cost; bomTax+=taxAmt;
+    return {...item, rate, taxRate, cost, taxAmt};
+  });
+  const out = num(product.batchOutputKg)||1;
+  return { bomRows, bomCost, bomTax, namkeenCostPerKg:bomCost/out, namkeenTaxPerKg:bomTax/out };
+}
+
+function calcVariant(variant, pc, oh) {
+  if (!variant||!pc) return null;
+  const totalOH = num(oh.labourPerKg)+num(oh.boilerFuelPerKg)+num(oh.electricityPerKg)+num(oh.indirectPerKg);
+  const totalCostPerKg = pc.namkeenCostPerKg + totalOH;
+  const fillKg = num(variant.fillWeightG)/1000;
+
+  const nmCostPerPouch = totalCostPerKg * fillKg;
+  const nmTaxPerPouch  = pc.namkeenTaxPerKg * fillKg;
+  const lam = variant.laminate||{};
+  const lamCostPerPouch = lam.ratePerKg&&lam.pouchesPerKg ? num(lam.ratePerKg)/num(lam.pouchesPerKg) : 0;
+  const lamTaxPerPouch  = lam.ratePerKg&&lam.pouchesPerKg ? (num(lam.ratePerKg)*0.18)/num(lam.pouchesPerKg) : 0;
+  const totalCostPerPouch = nmCostPerPouch + lamCostPerPouch;
+  const totalTaxPerPouch  = nmTaxPerPouch  + lamTaxPerPouch;
+
+  let totalPouches=0, packCost=0, packTax=0;
+  if (variant.packingType==='box') {
+    const ct = variant.carton||{};
+    totalPouches = num(ct.pouchesPerCarton);
+    packCost = num(ct.rate);
+    packTax  = packCost * 0.05;
+  } else {
+    const pb=variant.primaryBag||{}, mb=variant.masterBag||{};
+    const pbCount = num(mb.primaryBagsPerMaster);
+    totalPouches = num(pb.pouchesPerBag) * pbCount;
+    const pbCost = num(pb.ratePerBag)*pbCount, mbCost = num(mb.ratePerBag);
+    packCost = pbCost+mbCost;
+    packTax  = packCost*0.18;
+  }
+
+  const pouchCost  = totalCostPerPouch * totalPouches;
+  const freight    = num(variant.freightLocal)||40;
+  const preTaxCost = pouchCost + packCost + freight;
+  const inputTax   = totalTaxPerPouch*totalPouches + packTax;
+  const outputTax  = preTaxCost * 0.05;
+  const netGST     = outputTax - inputTax;
+  const netCost    = preTaxCost + netGST;
+  const effectiveSP = num(variant.sellingPricePerUnit) - num(variant.scheme);
+  const profit      = effectiveSP - netCost;
+  const markupPct   = netCost>0 ? (profit/netCost)*100 : 0;
+  const grossPct    = effectiveSP>0 ? (profit/effectiveSP)*100 : 0;
+
+  return {
+    totalOH, totalCostPerKg, nmCostPerPouch, lamCostPerPouch, totalCostPerPouch,
+    totalPouches, packCost, packTax, pouchCost, preTaxCost,
+    inputTax, outputTax, netGST, netCost,
+    effectiveSP, profit, markupPct, grossPct,
+    costPerPouch: totalPouches>0 ? netCost/totalPouches : 0
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIREBASE HOOKS
+// ═══════════════════════════════════════════════════════════════════════════
+function useCol(col) {
+  const [data,setData] = useState([]);
+  const [loading,setLoading] = useState(true);
+  useEffect(()=>{
+    return db.collection(col).onSnapshot(snap=>{
+      setData(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    });
+  },[col]);
+  return [data,loading];
+}
+
+function useOverhead() {
+  const [oh,setOh] = useState({labourPerKg:0,boilerFuelPerKg:0,electricityPerKg:0,indirectPerKg:0,history:[]});
+  useEffect(()=>{
+    return db.collection(C.OH).doc('rates').onSnapshot(snap=>{
+      if(snap.exists) setOh(snap.data());
+    });
+  },[]);
+  return oh;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UI PRIMITIVES
+// ═══════════════════════════════════════════════════════════════════════════
+const mCol = p => p>=10?'#16a34a':p>=6?'#d97706':'#dc2626';
+const mBg  = p => p>=10?'#f0fdf4':p>=6?'#fffbeb':'#fef2f2';
+const mBdr = p => p>=10?'#bbf7d0':p>=6?'#fde68a':'#fecaca';
+
+function Btn({children,onClick,v='primary',sm,full,disabled,style:s={}}) {
+  const bg = v==='primary'?'#e8851b':v==='danger'?'#fee2e2':v==='ghost'?'transparent':'#f3f4f6';
+  const cl = v==='primary'?'#fff':v==='danger'?'#dc2626':'#374151';
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      background:bg,color:cl,border:'none',borderRadius:'8px',
+      padding:sm?'6px 12px':'10px 16px',fontSize:sm?'12px':'13px',
+      fontWeight:'700',cursor:disabled?'default':'pointer',opacity:disabled?.6:1,
+      width:full?'100%':'auto',fontFamily:'Sora,sans-serif',...s
+    }}>{children}</button>
+  );
+}
+
+function Inp({label,value,onChange,type='text',placeholder,req,style:s={}}) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'4px',...s}}>
+      {label&&<label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>{label}{req?' *':''}</label>}
+      <input type={type} value={value??''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',width:'100%',background:'#fff'}} />
+    </div>
+  );
+}
+
+function Sel({label,value,onChange,opts,placeholder}) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+      {label&&<label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>{label}</label>}
+      <select value={value??''} onChange={e=>onChange(e.target.value)}
+        style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',background:'#fff',width:'100%'}}>
+        {placeholder&&<option value="">{placeholder}</option>}
+        {opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Modal({title,onClose,children}) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:'540px',maxHeight:'92vh',overflowY:'auto'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 16px',borderBottom:'1px solid #f3f4f6',position:'sticky',top:0,background:'#fff',zIndex:1}}>
+          <div style={{fontWeight:'800',fontSize:'15px'}}>{title}</div>
+          <button onClick={onClose} style={{background:'#f3f4f6',border:'none',borderRadius:'50%',width:'30px',height:'30px',cursor:'pointer',fontSize:'18px',lineHeight:'1'}}>×</button>
+        </div>
+        <div style={{padding:'16px'}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const Card = ({children,style:s={},onClick}) => (
+  <div onClick={onClick} style={{background:'#fff',borderRadius:'14px',padding:'14px',border:'1.5px solid #f3f4f6',cursor:onClick?'pointer':'default',...s}}>{children}</div>
+);
+
+const SecHdr = ({title,action}) => (
+  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
+    <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>{title}</div>
+    {action}
+  </div>
+);
+
+const MBadge = ({pct}) => (
+  <div style={{background:mBg(pct),color:mCol(pct),border:`1.5px solid ${mBdr(pct)}`,borderRadius:'20px',padding:'3px 10px',fontSize:'12px',fontWeight:'800',fontFamily:'JetBrains Mono,monospace'}}>{f1(pct)}%</div>
+);
+
+const Empty = ({icon,text}) => (
+  <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af'}}>
+    <div style={{fontSize:'36px',marginBottom:'10px'}}>{icon}</div>
+    <div style={{fontSize:'13px'}}>{text}</div>
+  </div>
+);
+
+const InfoBox = ({children,color='orange'}) => {
+  const cols = {orange:{bg:'#fef9ec',bdr:'#fcd34d',cl:'#92400e'},blue:{bg:'#eff6ff',bdr:'#bfdbfe',cl:'#1e40af'},purple:{bg:'#faf5ff',bdr:'#e9d5ff',cl:'#6b21a8'}};
+  const c = cols[color]||cols.orange;
+  return <div style={{background:c.bg,border:`1px solid ${c.bdr}`,borderRadius:'8px',padding:'9px 12px',fontSize:'12px',color:c.cl}}>{children}</div>;
+};
+
+const Row2 = ({children}) => <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>{children}</div>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BOM BUILDER — shared by sub-recipes and products
+// ═══════════════════════════════════════════════════════════════════════════
+function BOMBuilder({bom,onChange,rms,subs=[],allowSubs=true}) {
+  const [addType,setAddType]   = useState('rm');
+  const [addRefId,setAddRefId] = useState('');
+  const [addRefNm,setAddRefNm] = useState('');
+  const [addQty,setAddQty]     = useState('');
+
+  const getRate = (type,refId) => {
+    if(type==='rm'){const rm=rms.find(r=>r.id===refId);return rm?num(rm.currentRate):0;}
+    const sr=subs.find(s=>s.id===refId);return sr?calcSubRecipe(sr,rms).costPerKg:0;
+  };
+
+  const totalCost = bom.reduce((s,i)=>s+num(i.qtyKg)*getRate(i.type,i.refId),0);
+
+  const handleAdd = () => {
+    if(!addRefId||!addQty||!addRefNm) return;
+    onChange([...bom,{type:addType,refId:addRefId,refName:addRefNm,qtyKg:num(addQty),_id:Date.now()+''}]);
+    setAddRefId(''); setAddRefNm(''); setAddQty('');
+  };
+  const rmItem = idx => onChange(bom.filter((_,i)=>i!==idx));
+  const chgQty = (idx,v) => onChange(bom.map((it,i)=>i===idx?{...it,qtyKg:num(v)}:it));
+
+  const rmOpts = rms.map(r=>({v:r.id,l:`${r.name} (₹${r.currentRate}/kg)`}));
+  const srOpts = subs.map(s=>{const c=calcSubRecipe(s,rms);return {v:s.id,l:`${s.name} (₹${f2(c.costPerKg)}/kg)`};});
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+      {bom.length>0&&(
+        <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+          {bom.map((item,idx)=>{
+            const rate=getRate(item.type,item.refId);
+            const cost=num(item.qtyKg)*rate;
+            return (
+              <div key={item._id||idx} style={{display:'grid',gridTemplateColumns:'1fr 72px 68px 26px',padding:'8px 10px',borderTop:idx>0?'1px solid #f3f4f6':'none',background:idx%2===0?'#fff':'#fafafa',alignItems:'center',gap:'6px'}}>
+                <div>
+                  <div style={{fontWeight:'600',fontSize:'12px'}}>{item.refName}</div>
+                  <div style={{fontSize:'10px',color:item.type==='sub'?'#7c3aed':'#0369a1'}}>{item.type==='sub'?'PROC':'RAW'} · ₹{f2(rate)}/kg</div>
+                </div>
+                <input type="number" value={item.qtyKg} onChange={e=>chgQty(idx,e.target.value)}
+                  style={{border:'1.5px solid #e5e7eb',borderRadius:'6px',padding:'4px 6px',fontSize:'12px',textAlign:'right',width:'100%',fontFamily:'JetBrains Mono,monospace'}} />
+                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'600'}}>₹{f2(cost)}</div>
+                <button onClick={()=>rmItem(idx)} style={{background:'#fee2e2',border:'none',borderRadius:'5px',color:'#dc2626',cursor:'pointer',fontWeight:'700',fontSize:'15px',width:'22px',height:'22px',lineHeight:'1'}}>×</button>
+              </div>
+            );
+          })}
+          <div style={{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'#fff9f0',borderTop:'2px solid #e8851b'}}>
+            <span style={{fontWeight:'700',fontSize:'12px',color:'#c2610a'}}>Total Batch Cost</span>
+            <span style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'700',color:'#c2610a'}}>₹{f2(totalCost)}</span>
+          </div>
+        </div>
+      )}
+      <div style={{background:'#f9fafb',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+        <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase'}}>+ Add Item to BOM</div>
+        {allowSubs&&(
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+            {['rm','sub'].map(t=>(
+              <button key={t} onClick={()=>{setAddType(t);setAddRefId('');setAddRefNm('');}}
+                style={{padding:'7px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:addType===t?'#e8851b':'#e5e7eb',color:addType===t?'#fff':'#6b7280'}}>
+                {t==='rm'?'🌾 Raw Material':'⚙️ Sub-Recipe'}
+              </button>
+            ))}
+          </div>
+        )}
+        <select value={addRefId} onChange={e=>{
+          const opts=addType==='rm'?rmOpts:srOpts;
+          const opt=opts.find(o=>o.v===e.target.value);
+          setAddRefId(e.target.value);
+          setAddRefNm(opt?opt.l.split(' (')[0]:'');
+        }} style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'8px 10px',fontSize:'13px',background:'#fff'}}>
+          <option value="">Select {addType==='rm'?'ingredient':'sub-recipe'}...</option>
+          {(addType==='rm'?rmOpts:srOpts).map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
+        <div style={{display:'flex',gap:'8px',alignItems:'flex-end'}}>
+          <Inp label="Qty (kg)" value={addQty} onChange={setAddQty} type="number" style={{flex:1}} />
+          <Btn onClick={handleAdd} disabled={!addRefId||!addQty}>Add</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RAW MATERIALS
+// ═══════════════════════════════════════════════════════════════════════════
+function RMForm({rm,onDone}) {
+  const [name,setName]=useState(rm?.name||'');
+  const [rate,setRate]=useState(rm?.currentRate||'');
+  const [tax,setTax]=useState(rm?.taxPct??'');
+  const [busy,setBusy]=useState(false);
+
+  const save = async()=>{
+    if(!name||rate===''){return;}
+    setBusy(true);
+    try{
+      if(rm){
+        const rateChanged=num(rate)!==rm.currentRate;
+        await db.collection(C.RM).doc(rm.id).update({
+          name, currentRate:num(rate), taxPct:num(tax),
+          ...(rateChanged&&{rateHistory:FV.arrayUnion({rate:num(rate),date:today()})})
+        });
+      } else {
+        await db.collection(C.RM).add({name,currentRate:num(rate),taxPct:num(tax),rateHistory:[{rate:num(rate),date:today()}]});
+      }
+      onDone();
+    } finally{setBusy(false);}
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+      <Inp label="Ingredient Name" value={name} onChange={setName} req />
+      <Row2>
+        <Inp label="Rate ₹/kg" value={rate} onChange={setRate} type="number" req />
+        <Inp label="GST %" value={tax} onChange={setTax} type="number" placeholder="0" />
+      </Row2>
+      <Row2>
+        <Btn v="secondary" onClick={onDone} full>Cancel</Btn>
+        <Btn onClick={save} disabled={busy} full>{busy?'Saving…':rm?'Update':'Add Ingredient'}</Btn>
+      </Row2>
+    </div>
+  );
+}
+
+function RawMaterials({rms}) {
+  const [q,setQ]=useState('');
+  const [form,setForm]=useState(false);
+  const [edit,setEdit]=useState(null);
+  const [hist,setHist]=useState(null);
+  const filtered=rms.filter(r=>r.name.toLowerCase().includes(q.toLowerCase()));
+
+  const del = async r=>{if(confirm(`Delete "${r.name}"?`)) await db.collection(C.RM).doc(r.id).delete();};
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
+      <SecHdr title={`Raw Materials (${rms.length})`} action={<Btn sm onClick={()=>{setEdit(null);setForm(true);}}>+ Add</Btn>} />
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…"
+        style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',width:'100%'}} />
+      <InfoBox>💡 Tap ✏️ to update rate — change is saved with date. All product costs update instantly.</InfoBox>
+      <div style={{borderRadius:'12px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',background:'#e8851b',padding:'8px 12px',gap:'6px'}}>
+          {['Ingredient','Rate/kg','GST',''].map(h=><div key={h} style={{fontSize:'10px',fontWeight:'700',color:'#fff',textAlign:h&&h!=='Ingredient'?'right':'left'}}>{h}</div>)}
+        </div>
+        {filtered.length===0?<Empty icon="🔍" text="No results" />:filtered.map((rm,i)=>(
+          <div key={rm.id} style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',padding:'9px 12px',borderTop:'1px solid #f3f4f6',background:i%2===0?'#fff':'#fafafa',alignItems:'center',gap:'6px'}}>
+            <div>
+              <div style={{fontWeight:'600',fontSize:'13px'}}>{rm.name}</div>
+              <div style={{fontSize:'10px',color:'#9ca3af'}}>{(rm.rateHistory||[]).length} changes</div>
+            </div>
+            <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',fontSize:'13px'}}>₹{rm.currentRate}</div>
+            <div style={{textAlign:'right',fontSize:'12px',color:rm.taxPct>0?'#e8851b':'#9ca3af'}}>{rm.taxPct}%</div>
+            <div style={{display:'flex',gap:'3px',justifyContent:'flex-end'}}>
+              <Btn sm v="ghost" onClick={()=>setHist(rm)}>📈</Btn>
+              <Btn sm v="secondary" onClick={()=>{setEdit(rm);setForm(true);}}>✏️</Btn>
+              <Btn sm v="danger" onClick={()=>del(rm)}>🗑</Btn>
+            </div>
+          </div>
+        ))}
+      </div>
+      {form&&<Modal title={edit?'Edit Ingredient':'Add Ingredient'} onClose={()=>setForm(false)}><RMForm rm={edit} onDone={()=>setForm(false)} /></Modal>}
+      {hist&&(
+        <Modal title={`Rate History — ${hist.name}`} onClose={()=>setHist(null)}>
+          <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+            <div style={{fontWeight:'800',fontSize:'15px',color:'#e8851b',fontFamily:'JetBrains Mono,monospace'}}>Current: ₹{hist.currentRate}/kg · GST {hist.taxPct}%</div>
+            {(hist.rateHistory||[]).slice().reverse().map((h,i)=>(
+              <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',background:'#f9fafb',borderRadius:'8px'}}>
+                <span style={{fontSize:'12px',color:'#6b7280'}}>{h.date}</span>
+                <span style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'700'}}>₹{h.rate}/kg</span>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-RECIPES
+// ═══════════════════════════════════════════════════════════════════════════
+function SRForm({sr,rms,onDone}) {
+  const [name,setName]=useState(sr?.name||'');
+  const [type,setType]=useState(sr?.type||'frying');
+  const [bom,setBom]=useState(sr?.bom||[]);
+  const [outKg,setOutKg]=useState(sr?.outputKg||'');
+  const [busy,setBusy]=useState(false);
+
+  const inKg = bom.reduce((s,i)=>s+num(i.qtyKg),0);
+  const yldPct = outKg>0&&inKg>0?((outKg/inKg)*100).toFixed(1):'-';
+  const {costPerKg,taxPerKg} = outKg>0?calcSubRecipe({bom,outputKg:num(outKg)},rms):{costPerKg:0,taxPerKg:0};
+
+  const save = async()=>{
+    if(!name||!outKg||!bom.length) return;
+    setBusy(true);
+    try{
+      const d={name,type,bom,inputKg:inKg,outputKg:num(outKg),yieldPct:num(yldPct)||0};
+      if(sr) await db.collection(C.SUB).doc(sr.id).update(d);
+      else await db.collection(C.SUB).add(d);
+      onDone();
+    } finally{setBusy(false);}
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+      <Inp label="Sub-Recipe Name" value={name} onChange={setName} req placeholder="e.g. Masoor Bhujia" />
+      <Sel label="Process Type" value={type} onChange={setType} opts={[{v:'frying',l:'🔥 Frying'},{v:'extrusion',l:'⚙️ Extrusion (Sev/Gathiya machine)'},{v:'blending',l:'🥣 Blending / Masala Mix'},{v:'roasting',l:'♨️ Roasting'}]} />
+      <div>
+        <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'8px'}}>Bill of Materials (Inputs) *</div>
+        <BOMBuilder bom={bom} onChange={setBom} rms={rms} allowSubs={false} />
+      </div>
+      <Row2>
+        <div style={{background:'#f9fafb',borderRadius:'8px',padding:'10px',textAlign:'center'}}>
+          <div style={{fontSize:'10px',color:'#9ca3af',marginBottom:'2px'}}>Total Input (kg)</div>
+          <div style={{fontWeight:'700',fontFamily:'JetBrains Mono,monospace'}}>{f2(inKg)}</div>
+        </div>
+        <Inp label="Output / Yield (kg) *" value={outKg} onChange={setOutKg} type="number" req />
+      </Row2>
+      {outKg>0&&inKg>0&&(
+        <div style={{background:'#fff4e6',border:'1px solid #fed7aa',borderRadius:'10px',padding:'12px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',textAlign:'center'}}>
+            {[{l:'Yield %',v:`${yldPct}%`},{l:'Cost/kg',v:`₹${f2(costPerKg)}`},{l:'Tax/kg',v:`₹${f2(taxPerKg)}`}].map(x=>(
+              <div key={x.l}>
+                <div style={{fontSize:'10px',color:'#9a6006'}}>{x.l}</div>
+                <div style={{fontWeight:'800',fontSize:'14px',color:'#c2610a',fontFamily:'JetBrains Mono,monospace'}}>{x.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <Row2>
+        <Btn v="secondary" onClick={onDone} full>Cancel</Btn>
+        <Btn onClick={save} disabled={busy} full>{busy?'Saving…':sr?'Update':'Create'}</Btn>
+      </Row2>
+    </div>
+  );
+}
+
+function SubRecipes({subs,rms}) {
+  const [q,setQ]=useState('');
+  const [form,setForm]=useState(false);
+  const [edit,setEdit]=useState(null);
+  const filtered=subs.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
+  const del=async s=>{if(confirm(`Delete "${s.name}"?`)) await db.collection(C.SUB).doc(s.id).delete();};
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
+      <SecHdr title={`Sub-Recipes (${subs.length})`} action={<Btn sm onClick={()=>{setEdit(null);setForm(true);}}>+ Add</Btn>} />
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search sub-recipes…"
+        style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',width:'100%'}} />
+      <InfoBox>⚙️ Sub-recipes are processed intermediates — bhujia, sev, masala mixes, fried dals. Enter input ingredients and output yield. Cost/kg auto-cascades from RM rates.</InfoBox>
+      {filtered.length===0?<Empty icon="⚙️" text="No sub-recipes yet." />:filtered.map(sr=>{
+        const {costPerKg,taxPerKg}=calcSubRecipe(sr,rms);
+        return (
+          <Card key={sr.id}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'8px'}}>
+              <div>
+                <div style={{fontWeight:'800',fontSize:'14px'}}>{sr.name}</div>
+                <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px',textTransform:'uppercase'}}>{sr.type} · Yield {f1(sr.yieldPct)}%</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'16px',color:'#e8851b'}}>₹{f2(costPerKg)}</div>
+                <div style={{fontSize:'10px',color:'#9ca3af'}}>per kg</div>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginBottom:'10px'}}>
+              {[{l:'Input',v:`${f2(sr.inputKg)} kg`},{l:'Output',v:`${f2(sr.outputKg)} kg`},{l:'Input Tax/kg',v:`₹${f2(taxPerKg)}`}].map(x=>(
+                <div key={x.l} style={{background:'#f9fafb',borderRadius:'8px',padding:'6px',textAlign:'center'}}>
+                  <div style={{fontSize:'10px',color:'#9ca3af'}}>{x.l}</div>
+                  <div style={{fontWeight:'700',fontSize:'12px',fontFamily:'JetBrains Mono,monospace'}}>{x.v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'8px',lineHeight:'1.5'}}>
+              {(sr.bom||[]).map(b=>`${b.refName} (${b.qtyKg}kg)`).join(' + ')}
+            </div>
+            <div style={{display:'flex',gap:'6px'}}>
+              <Btn sm v="secondary" onClick={()=>{setEdit(sr);setForm(true);}} style={{flex:1}}>✏️ Edit</Btn>
+              <Btn sm v="danger" onClick={()=>del(sr)}>🗑</Btn>
+            </div>
+          </Card>
+        );
+      })}
+      {form&&<Modal title={edit?'Edit Sub-Recipe':'New Sub-Recipe'} onClose={()=>setForm(false)}><SRForm sr={edit} rms={rms} onDone={()=>setForm(false)} /></Modal>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PACK VARIANT FORM
+// ═══════════════════════════════════════════════════════════════════════════
+function VarForm({v:vt,productId,productName,onDone}) {
+  const [mrp,setMrp]=useState(vt?.mrp||'');
+  const [pt,setPt]=useState(vt?.packingType||'box');
+  const [fw,setFw]=useState(vt?.fillWeightG||'');
+  const [lamSz,setLamSz]=useState(vt?.laminate?.sizeDesc||'');
+  const [lamRt,setLamRt]=useState(vt?.laminate?.ratePerKg||'');
+  const [lamPk,setLamPk]=useState(vt?.laminate?.pouchesPerKg||'');
+  const [ctType,setCtType]=useState(vt?.carton?.type||'Duplex Printed');
+  const [ctRt,setCtRt]=useState(vt?.carton?.rate||'');
+  const [ctPk,setCtPk]=useState(vt?.carton?.pouchesPerCarton||'');
+  const [pbSz,setPbSz]=useState(vt?.primaryBag?.sizeDesc||'');
+  const [pbRt,setPbRt]=useState(vt?.primaryBag?.ratePerBag||'');
+  const [pbPk,setPbPk]=useState(vt?.primaryBag?.pouchesPerBag||'');
+  const [mbSz,setMbSz]=useState(vt?.masterBag?.sizeDesc||'');
+  const [mbRt,setMbRt]=useState(vt?.masterBag?.ratePerBag||'');
+  const [mbCt,setMbCt]=useState(vt?.masterBag?.primaryBagsPerMaster||'');
+  const [sp,setSp]=useState(vt?.sellingPricePerUnit||'');
+  const [sch,setSch]=useState(vt?.scheme||'');
+  const [frL,setFrL]=useState(vt?.freightLocal||40);
+  const [frO,setFrO]=useState(vt?.freightOutstation||'');
+  const [busy,setBusy]=useState(false);
+
+  const totalPouches = pt==='box'?num(ctPk):num(pbPk)*num(mbCt);
+
+  const save = async()=>{
+    if(!mrp||!fw||!sp) return;
+    setBusy(true);
+    try{
+      const d={
+        productId, productName, mrp:num(mrp), packingType:pt, fillWeightG:num(fw),
+        laminate:{sizeDesc:lamSz,ratePerKg:num(lamRt),pouchesPerKg:num(lamPk)},
+        sellingPricePerUnit:num(sp), scheme:num(sch)||0,
+        freightLocal:num(frL)||40, freightOutstation:num(frO)||60,
+        ...(pt==='box'?{
+          carton:{type:ctType,rate:num(ctRt),taxPct:5,pouchesPerCarton:num(ctPk)},
+          primaryBag:null, masterBag:null
+        }:{
+          primaryBag:{sizeDesc:pbSz,ratePerBag:num(pbRt),pouchesPerBag:num(pbPk)},
+          masterBag:{sizeDesc:mbSz,ratePerBag:num(mbRt),primaryBagsPerMaster:num(mbCt)},
+          carton:null
+        })
+      };
+      if(vt) await db.collection(C.VAR).doc(vt.id).update(d);
+      else await db.collection(C.VAR).add(d);
+      onDone();
+    } finally{setBusy(false);}
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+      <Row2>
+        <Inp label="MRP ₹/pouch" value={mrp} onChange={setMrp} type="number" req />
+        <Inp label="Fill Weight (g)" value={fw} onChange={setFw} type="number" req />
+      </Row2>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+        {['box','bag'].map(t=>(
+          <button key={t} onClick={()=>setPt(t)}
+            style={{padding:'10px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:pt===t?'#e8851b':'#f3f4f6',color:pt===t?'#fff':'#6b7280'}}>
+            {t==='box'?'📦 Box / Carton':'👜 Bag / Bori'}
+          </button>
+        ))}
+      </div>
+
+      {/* Laminate */}
+      <div style={{background:'#f9fafb',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+        <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase'}}>🎁 Laminate Pouch (18% GST)</div>
+        <Inp label="Pouch Size (e.g. 240×150mm)" value={lamSz} onChange={setLamSz} />
+        <Row2>
+          <Inp label="Rate ₹/kg" value={lamRt} onChange={setLamRt} type="number" />
+          <Inp label="Pouches per kg" value={lamPk} onChange={setLamPk} type="number" />
+        </Row2>
+        {lamRt&&lamPk&&<InfoBox color="orange">Cost/pouch: ₹{f2(lamRt/lamPk)} · Tax input: ₹{f2((lamRt*0.18)/lamPk)}/pouch</InfoBox>}
+      </div>
+
+      {/* Box or Bag */}
+      {pt==='box'?(
+        <div style={{background:'#eff6ff',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+          <div style={{fontSize:'10px',fontWeight:'700',color:'#1d4ed8',textTransform:'uppercase'}}>📦 Carton (5% GST)</div>
+          <Sel label="Carton Type" value={ctType} onChange={setCtType} opts={[{v:'Duplex Printed',l:'Duplex Printed'},{v:'Kraft',l:'Kraft Box'}]} />
+          <Row2>
+            <Inp label="Rate ₹/carton" value={ctRt} onChange={setCtRt} type="number" />
+            <Inp label="Pouches per carton" value={ctPk} onChange={setCtPk} type="number" />
+          </Row2>
+          {ctPk&&<InfoBox color="blue">1 carton = {ctPk} pouches</InfoBox>}
+        </div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+          <div style={{background:'#faf5ff',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+            <div style={{fontSize:'10px',fontWeight:'700',color:'#7c3aed',textTransform:'uppercase'}}>👜 Primary LDPE Bag (18% GST)</div>
+            <Inp label="Bag Size (e.g. 12×16 inch)" value={pbSz} onChange={setPbSz} />
+            <Row2>
+              <Inp label="Rate ₹/bag" value={pbRt} onChange={setPbRt} type="number" />
+              <Inp label="Pouches per bag" value={pbPk} onChange={setPbPk} type="number" />
+            </Row2>
+          </div>
+          <div style={{background:'#faf5ff',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+            <div style={{fontSize:'10px',fontWeight:'700',color:'#7c3aed',textTransform:'uppercase'}}>📦 Master Bori (18% GST)</div>
+            <Inp label="Bori Size (e.g. 30×38 inch)" value={mbSz} onChange={setMbSz} />
+            <Row2>
+              <Inp label="Rate ₹/bori" value={mbRt} onChange={setMbRt} type="number" />
+              <Inp label="LDPE bags per bori" value={mbCt} onChange={setMbCt} type="number" />
+            </Row2>
+            {totalPouches>0&&<InfoBox color="purple">1 bori = {mbCt} bags × {pbPk} pouches = <strong>{totalPouches} pouches</strong></InfoBox>}
+          </div>
+        </div>
+      )}
+
+      {/* Pricing */}
+      <div style={{background:'#f9fafb',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+        <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase'}}>💰 Pricing</div>
+        <Row2>
+          <Inp label="Selling Price ₹/unit" value={sp} onChange={setSp} type="number" req />
+          <Inp label="Scheme ₹/unit" value={sch} onChange={setSch} type="number" />
+        </Row2>
+        <Row2>
+          <Inp label="Freight Local ₹" value={frL} onChange={setFrL} type="number" />
+          <Inp label="Freight Outstation ₹" value={frO} onChange={setFrO} type="number" />
+        </Row2>
+      </div>
+
+      <Row2>
+        <Btn v="secondary" onClick={onDone} full>Cancel</Btn>
+        <Btn onClick={save} disabled={busy} full>{busy?'Saving…':vt?'Update Variant':'Add Variant'}</Btn>
+      </Row2>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VARIANT DETAIL BREAKDOWN
+// ═══════════════════════════════════════════════════════════════════════════
+function VarDetail({variant,pc,oh}) {
+  const c = calcVariant(variant,pc,oh);
+  if(!c) return null;
+  const CRow=({label,val,note,bold,color,topBdr,bg})=>(
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:bg||'transparent',borderTop:topBdr?'2px solid #e8851b':'1px solid #f3f4f6'}}>
+      <div>
+        <div style={{fontSize:'12px',fontWeight:bold?'700':'400',color:bold?'#1c1c1c':'#374151'}}>{label}</div>
+        {note&&<div style={{fontSize:'10px',color:'#9ca3af',marginTop:'1px'}}>{note}</div>}
+      </div>
+      <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:bold?'700':'500',color:color||'#1c1c1c'}}>{val}</div>
+    </div>
+  );
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>
+        {[{l:'Fill Wt',v:`${variant.fillWeightG}g`},{l:'Pouches',v:c.totalPouches},{l:'Pack Type',v:variant.packingType}].map(x=>(
+          <div key={x.l} style={{background:'#f9fafb',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
+            <div style={{fontSize:'10px',color:'#9ca3af'}}>{x.l}</div>
+            <div style={{fontWeight:'700',fontSize:'12px'}}>{x.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+        <CRow label="Namkeen cost/pouch" note={`${variant.fillWeightG}g × ₹${f2(c.totalCostPerKg)}/kg (incl overhead ₹${f2(c.totalOH)}/kg)`} val={`₹${f2(c.nmCostPerPouch)}`} />
+        <CRow label="Laminate cost/pouch" note={`₹${variant.laminate?.ratePerKg}/kg ÷ ${variant.laminate?.pouchesPerKg} pcs`} val={`₹${f2(c.lamCostPerPouch)}`} />
+        <CRow label="Total cost per pouch" val={`₹${f2(c.totalCostPerPouch)}`} bold bg="#fff9f0" topBdr />
+        <CRow label={`${c.totalPouches} pouches × ₹${f2(c.totalCostPerPouch)}`} val={`₹${f2(c.pouchCost)}`} />
+        <CRow label="Packaging (carton/bags/bori)" val={`₹${f2(c.packCost)}`} />
+        <CRow label="Freight (local)" val={`₹${variant.freightLocal||40}`} />
+        <CRow label="Sub-total (pre-GST)" val={`₹${f2(c.preTaxCost)}`} bold />
+        <CRow label="+ Output GST 5%" val={`+₹${f2(c.outputTax)}`} color="#dc2626" />
+        <CRow label="− Input Tax Credits" note="Paid on RM/sub-recipe + laminate + packaging" val={`−₹${f2(c.inputTax)}`} color="#16a34a" />
+        <CRow label="Net GST payable" val={`₹${f2(c.netGST)}`} color={c.netGST>0?'#dc2626':'#16a34a'} />
+        <CRow label="Net Cost (inc. GST)" val={`₹${f2(c.netCost)}`} bold bg="#f9fafb" topBdr />
+      </div>
+      <div style={{background:mBg(c.markupPct),border:`2px solid ${mBdr(c.markupPct)}`,borderRadius:'12px',padding:'12px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+          {[{l:'Sell Price',v:`₹${c.effectiveSP}`},{l:'Net Cost',v:`₹${f2(c.netCost)}`},{l:'Net Profit',v:`₹${f2(c.profit)}`,cl:mCol(c.markupPct)},{l:'Markup %',v:`${f1(c.markupPct)}%`,cl:mCol(c.markupPct)}].map(x=>(
+            <div key={x.l} style={{background:'#fff',borderRadius:'8px',padding:'10px',textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:'#9ca3af'}}>{x.l}</div>
+              <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'17px',fontWeight:'800',color:x.cl||'#1c1c1c'}}>{x.v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:'8px',background:'#fff',borderRadius:'8px',padding:'7px 10px',fontSize:'11px',color:'#6b7280',display:'flex',gap:'10px',justifyContent:'center',flexWrap:'wrap'}}>
+          <span>Cost/pouch: ₹{f2(c.costPerPouch)}</span>
+          <span>·</span><span>Gross margin: {f1(c.grossPct)}%</span>
+          <span>·</span><span>Overhead: ₹{f2(c.totalOH)}/kg</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCT FORM
+// ═══════════════════════════════════════════════════════════════════════════
+function ProdForm({prod,rms,subs,onDone}) {
+  const [name,setName]=useState(prod?.name||'');
+  const [cat,setCat]=useState(prod?.category||'namkeen');
+  const [bom,setBom]=useState(prod?.bom||[]);
+  const [outKg,setOutKg]=useState(prod?.batchOutputKg||'');
+  const [busy,setBusy]=useState(false);
+
+  const pc = bom.length&&outKg?calcProduct({bom,batchOutputKg:num(outKg)},rms,subs):null;
+
+  const save = async()=>{
+    if(!name||!outKg||!bom.length) return;
+    setBusy(true);
+    try{
+      const d={name,category:cat,bom,batchOutputKg:num(outKg),gstPct:5};
+      if(prod) await db.collection(C.PROD).doc(prod.id).update(d);
+      else await db.collection(C.PROD).add(d);
+      onDone();
+    } finally{setBusy(false);}
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+      <Inp label="Product Name" value={name} onChange={setName} req placeholder="e.g. Aloo Bhujia" />
+      <Sel label="Category" value={cat} onChange={setCat} opts={[{v:'namkeen',l:'🍘 Namkeen'},{v:'snacks',l:'🍟 Snacks (Fryums, etc.)'}]} />
+      <div>
+        <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'8px'}}>Bill of Materials (per batch) *</div>
+        <BOMBuilder bom={bom} onChange={setBom} rms={rms} subs={subs} allowSubs={true} />
+      </div>
+      <Inp label="Batch Output — kg of finished namkeen *" value={outKg} onChange={setOutKg} type="number" placeholder="e.g. 7.04" />
+      {pc&&(
+        <div style={{background:'#fff4e6',border:'1px solid #fed7aa',borderRadius:'10px',padding:'12px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',textAlign:'center'}}>
+          {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Namkeen Cost/kg',v:`₹${f2(pc.namkeenCostPerKg)}`}].map(x=>(
+            <div key={x.l}>
+              <div style={{fontSize:'10px',color:'#9a6006'}}>{x.l}</div>
+              <div style={{fontWeight:'800',color:'#c2610a',fontFamily:'JetBrains Mono,monospace',fontSize:'15px'}}>{x.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Row2>
+        <Btn v="secondary" onClick={onDone} full>Cancel</Btn>
+        <Btn onClick={save} disabled={busy} full>{busy?'Saving…':prod?'Update':'Create Product'}</Btn>
+      </Row2>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCT DETAIL PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
+  const [pForm,setPForm]=useState(false);
+  const [vForm,setVForm]=useState(false);
+  const [editV,setEditV]=useState(null);
+  const [expV,setExpV]=useState(null);
+
+  const current = prod;
+  const pc = calcProduct(current,rms,subs);
+  const myVars = variants.filter(v=>v.productId===current.id);
+
+  const delProd = async()=>{
+    if(!confirm(`Delete "${current.name}" and ALL ${myVars.length} variants? Cannot be undone.`)) return;
+    for(const v of myVars) await db.collection(C.VAR).doc(v.id).delete();
+    await db.collection(C.PROD).doc(current.id).delete();
+    onBack();
+  };
+  const delVar = async v=>{
+    if(!confirm(`Delete this ₹${v.mrp} ${v.packingType} variant?`)) return;
+    await db.collection(C.VAR).doc(v.id).delete();
+  };
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'14px'}}>
+      <div style={{background:'linear-gradient(135deg,#e8851b,#f59e0b)',borderRadius:'14px',padding:'14px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontWeight:'800',fontSize:'18px',color:'#fff'}}>{current.name}</div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.8)',marginTop:'2px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{current.category} · 5% GST</div>
+          </div>
+          <Btn sm v="ghost" onClick={()=>setPForm(true)} style={{color:'#fff',background:'rgba(255,255,255,0.2)'}}>✏️ Edit</Btn>
+        </div>
+        {pc&&(
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginTop:'12px'}}>
+            {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Cost/kg',v:`₹${f2(pc.namkeenCostPerKg)}`},{l:'BOM Items',v:(current.bom||[]).length}].map(x=>(
+              <div key={x.l} style={{background:'rgba(255,255,255,0.2)',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
+                <div style={{fontSize:'10px',color:'rgba(255,255,255,0.7)'}}>{x.l}</div>
+                <div style={{fontWeight:'800',color:'#fff',fontFamily:'JetBrains Mono,monospace',fontSize:'13px'}}>{x.v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* BOM Summary */}
+      {pc&&(
+        <div>
+          <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px'}}>BOM — Batch ({current.batchOutputKg} kg output)</div>
+          <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+            {pc.bomRows.map((item,i)=>(
+              <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px 70px',padding:'8px 12px',borderTop:i>0?'1px solid #f3f4f6':'none',background:i%2===0?'#fff':'#fafafa'}}>
+                <div>
+                  <span style={{fontWeight:'600',fontSize:'12px'}}>{item.refName}</span>
+                  <span style={{marginLeft:'5px',fontSize:'9px',padding:'1px 5px',borderRadius:'10px',background:item.type==='sub'?'#f3e8ff':'#e0f2fe',color:item.type==='sub'?'#7c3aed':'#0369a1'}}>{item.type==='sub'?'PROC':'RAW'}</span>
+                </div>
+                <div style={{textAlign:'right',fontSize:'12px',color:'#6b7280',fontFamily:'JetBrains Mono,monospace'}}>{item.qtyKg}kg</div>
+                <div style={{textAlign:'right',fontWeight:'700',fontSize:'12px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(item.cost)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Variants */}
+      <div>
+        <SecHdr title={`Pack Variants (${myVars.length})`} action={<Btn sm onClick={()=>{setEditV(null);setVForm(true);}}>+ Add Variant</Btn>} />
+        {myVars.length===0?<Empty icon="📦" text="No variants yet. Add a box or bag variant." />:myVars.map(v=>{
+          const vc=pc?calcVariant(v,pc,oh):null;
+          const exp=expV===v.id;
+          return (
+            <Card key={v.id} style={{marginBottom:'8px',border:vc?`1.5px solid ${mBdr(vc.markupPct)}`:undefined}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setExpV(exp?null:v.id)}>
+                <div>
+                  <div style={{fontWeight:'800',fontSize:'14px'}}>₹{v.mrp} MRP · {v.packingType==='box'?'📦':'👜'} {v.packingType}</div>
+                  <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>
+                    {vc?`${vc.totalPouches} pcs · SP ₹${vc.effectiveSP} · Net Cost ₹${f2(vc.netCost)}`:v.fillWeightG+'g fill'}
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  {vc&&<MBadge pct={vc.markupPct} />}
+                  <span style={{color:'#9ca3af',fontSize:'16px'}}>{exp?'▲':'▼'}</span>
+                </div>
+              </div>
+              {exp&&pc&&(
+                <div style={{marginTop:'14px',borderTop:'1px solid #f3f4f6',paddingTop:'14px'}}>
+                  <VarDetail variant={v} pc={pc} oh={oh} />
+                  <div style={{display:'flex',gap:'6px',marginTop:'10px'}}>
+                    <Btn sm v="secondary" onClick={()=>{setEditV(v);setVForm(true);}} style={{flex:1}}>✏️ Edit Variant</Btn>
+                    <Btn sm v="danger" onClick={()=>delVar(v)}>🗑</Btn>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <Btn v="danger" onClick={delProd} full sm>🗑 Delete Product &amp; All Variants</Btn>
+
+      {pForm&&<Modal title="Edit Product" onClose={()=>setPForm(false)}><ProdForm prod={current} rms={rms} subs={subs} onDone={()=>setPForm(false)} /></Modal>}
+      {vForm&&<Modal title={editV?'Edit Variant':'Add Pack Variant'} onClose={()=>setVForm(false)}><VarForm v={editV} productId={current.id} productName={current.name} onDone={()=>setVForm(false)} /></Modal>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTS LIST
+// ═══════════════════════════════════════════════════════════════════════════
+function Products({products,variants,rms,subs,oh}) {
+  const [q,setQ]=useState('');
+  const [cat,setCat]=useState('all');
+  const [form,setForm]=useState(false);
+  const [selProd,setSelProd]=useState(null);
+
+  // Keep selected prod in sync with live data
+  const liveSel = selProd?products.find(p=>p.id===selProd.id)||selProd:null;
+
+  if(liveSel) return (
+    <div>
+      <div style={{padding:'12px 16px',borderBottom:'1px solid #f3f4f6',display:'flex',alignItems:'center',gap:'10px',background:'#fff',position:'sticky',top:0,zIndex:5}}>
+        <Btn sm v="ghost" onClick={()=>setSelProd(null)}>← Back</Btn>
+        <div style={{fontWeight:'700',fontSize:'14px'}}>{liveSel.name}</div>
+      </div>
+      <ProdDetail prod={liveSel} variants={variants} rms={rms} subs={subs} oh={oh} onBack={()=>setSelProd(null)} />
+    </div>
+  );
+
+  const filtered=products.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())&&(cat==='all'||p.category===cat));
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
+      <SecHdr title={`Products (${products.length})`} action={<Btn sm onClick={()=>setForm(true)}>+ Add Product</Btn>} />
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search products…"
+        style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',width:'100%'}} />
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
+        {[{id:'all',l:'All'},{id:'namkeen',l:'🍘 Namkeen'},{id:'snacks',l:'🍟 Snacks'}].map(c=>(
+          <button key={c.id} onClick={()=>setCat(c.id)}
+            style={{padding:'7px 4px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:cat===c.id?'#e8851b':'#f3f4f6',color:cat===c.id?'#fff':'#6b7280'}}>
+            {c.l}
+          </button>
+        ))}
+      </div>
+      {filtered.length===0?<Empty icon="🏭" text="No products found. Add your first product." />:filtered.map(prod=>{
+        const pc=calcProduct(prod,rms,subs);
+        const pvs=variants.filter(v=>v.productId===prod.id);
+        const margins=pvs.map(v=>calcVariant(v,pc,oh)).filter(Boolean);
+        const bestM=margins.length>0?Math.max(...margins.map(m=>m.markupPct)):null;
+        return (
+          <Card key={prod.id} onClick={()=>setSelProd(prod)}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <div>
+                <div style={{fontWeight:'800',fontSize:'14px'}}>{prod.name}</div>
+                <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>{prod.category} · {(prod.bom||[]).length} BOM items · {pvs.length} variants</div>
+                {pc&&<div style={{fontSize:'12px',color:'#e8851b',marginTop:'4px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(pc.namkeenCostPerKg)}/kg cost</div>}
+              </div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'4px'}}>
+                {bestM!==null&&<MBadge pct={bestM} />}
+                <span style={{fontSize:'10px',color:'#9ca3af'}}>tap →</span>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+      {form&&<Modal title="Add New Product" onClose={()=>setForm(false)}><ProdForm rms={rms} subs={subs} onDone={()=>setForm(false)} /></Modal>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+function Dashboard({products,variants,rms,subs,oh,onGo}) {
+  const [simRmId,setSimRmId]=useState('');
+  const [simDelta,setSimDelta]=useState(0);
+
+  const varByProd=useMemo(()=>{
+    const m={};
+    for(const v of variants){if(!m[v.productId])m[v.productId]=[];m[v.productId].push(v);}
+    return m;
+  },[variants]);
+
+  const baseRms=rms;
+  const simRms=useMemo(()=>simDelta===0||!simRmId?baseRms:baseRms.map(r=>r.id===simRmId?{...r,currentRate:r.currentRate+simDelta}:r),[baseRms,simRmId,simDelta]);
+
+  const computedBase=useMemo(()=>products.map(p=>{
+    const pc=calcProduct(p,rms,subs);
+    const pvs=varByProd[p.id]||[];
+    const vcs=pvs.map(v=>calcVariant(v,pc,oh)).filter(Boolean);
+    return {p,pc,pvs,vcs,bestM:vcs.length?Math.max(...vcs.map(x=>x.markupPct)):null};
+  }),[products,rms,subs,oh,varByProd]);
+
+  const computedSim=useMemo(()=>simDelta!==0&&simRmId?products.map(p=>{
+    const pc=calcProduct(p,simRms,subs);
+    const pvs=varByProd[p.id]||[];
+    const vcs=pvs.map(v=>calcVariant(v,pc,oh)).filter(Boolean);
+    return {p,pc,pvs,vcs,bestM:vcs.length?Math.max(...vcs.map(x=>x.markupPct)):null};
+  }):null,[products,simRms,subs,oh,varByProd,simDelta,simRmId]);
+
+  if(products.length===0) return (
+    <div style={{padding:'16px'}}>
+      <Empty icon="🏭" text="No products yet. Add Raw Materials → Sub-Recipes → Products to get started." />
+    </div>
+  );
+
+  const selRM = simRmId?rms.find(r=>r.id===simRmId):null;
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'14px'}}>
+      <SecHdr title="Live Margin Overview" />
+      {computedBase.map(({p,pc,pvs,vcs,bestM})=>(
+        <Card key={p.id} onClick={()=>onGo(p)}
+          style={{border:`1.5px solid ${bestM!==null?mBdr(bestM):'#f3f4f6'}`,background:bestM!==null?mBg(bestM):'#fff'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}}>
+            <div>
+              <div style={{fontWeight:'800',fontSize:'15px',color:'#1c1c1c'}}>{p.name}</div>
+              <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px',textTransform:'uppercase',letterSpacing:'0.4px'}}>
+                {p.category} · {pc?`₹${f2(pc.namkeenCostPerKg)}/kg`:'—'}
+              </div>
+            </div>
+            <div style={{textAlign:'right'}}>
+              {bestM!==null?<><MBadge pct={bestM} />{pvs.length>1&&<div style={{fontSize:'10px',color:'#9ca3af',marginTop:'3px'}}>best of {pvs.length}</div>}</>:<div style={{fontSize:'11px',color:'#9ca3af'}}>No variants</div>}
+            </div>
+          </div>
+          {pvs.length>0&&(
+            <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+              {pvs.map((v,i)=>{
+                const vc=vcs[i];
+                return vc?<div key={v.id} style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:'8px',padding:'4px 10px',fontSize:'11px'}}>
+                  <span style={{fontWeight:'700'}}>₹{v.mrp}</span>
+                  <span style={{color:'#9ca3af',marginLeft:'4px'}}>{v.packingType}</span>
+                  <span style={{color:mCol(vc.markupPct),fontWeight:'800',marginLeft:'6px',fontFamily:'JetBrains Mono,monospace'}}>{f1(vc.markupPct)}%</span>
+                </div>:null;
+              })}
+            </div>
+          )}
+        </Card>
+      ))}
+
+      {/* What-If Simulator */}
+      <div style={{background:'#1c1c2e',borderRadius:'14px',padding:'16px'}}>
+        <div style={{fontSize:'10px',fontWeight:'800',color:'#a78bfa',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'4px'}}>🔮 What-If Simulator</div>
+        <div style={{fontSize:'12px',color:'#9ca3af',marginBottom:'12px'}}>Change any RM rate → see cascading effect on all products &amp; variants</div>
+        <div style={{marginBottom:'10px'}}>
+          <div style={{fontSize:'10px',color:'#d1d5db',marginBottom:'5px',textTransform:'uppercase',fontWeight:'700'}}>Select Ingredient</div>
+          <select value={simRmId} onChange={e=>{setSimRmId(e.target.value);setSimDelta(0);}}
+            style={{width:'100%',background:'#2d2d44',color:'#f3f4f6',border:'1px solid #4b5563',borderRadius:'8px',padding:'9px 12px',fontSize:'13px'}}>
+            <option value="">— Select RM to simulate —</option>
+            {rms.map(r=><option key={r.id} value={r.id}>{r.name} (₹{r.currentRate}/kg)</option>)}
+          </select>
+        </div>
+        {simRmId&&(
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:'5px'}}>
+              <span style={{fontSize:'11px',color:'#d1d5db',textTransform:'uppercase',fontWeight:'700'}}>Price Change</span>
+              <span style={{fontSize:'13px',fontWeight:'800',fontFamily:'JetBrains Mono,monospace',color:simDelta>0?'#f87171':simDelta<0?'#4ade80':'#9ca3af'}}>
+                {simDelta>0?'+':''}{simDelta} ₹/kg {selRM&&simDelta!==0?`(₹${selRM.currentRate}→₹${selRM.currentRate+simDelta})`:''}
+              </span>
+            </div>
+            <input type="range" min="-60" max="60" step="5" value={simDelta} onChange={e=>setSimDelta(num(e.target.value))}
+              style={{width:'100%',accentColor:'#a78bfa',marginBottom:'4px'}} />
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:'10px',color:'#6b7280',marginBottom:'12px'}}><span>−₹60</span><span>0</span><span>+₹60</span></div>
+            {simDelta!==0&&computedSim&&(
+              <div style={{borderTop:'1px solid #374151',paddingTop:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'#a78bfa',textTransform:'uppercase',letterSpacing:'1px'}}>Impact on All Products</div>
+                {computedBase.map((base,i)=>{
+                  const sim=computedSim[i];
+                  if(!base.bestM&&!sim.bestM) return null;
+                  const diff=(sim.bestM||0)-(base.bestM||0);
+                  const profitDiff=(sim.vcs[0]?.profit||0)-(base.vcs[0]?.profit||0);
+                  return (
+                    <div key={base.p.id} style={{background:'#2d2d44',borderRadius:'8px',padding:'10px'}}>
+                      <div style={{fontWeight:'700',color:'#f3f4f6',marginBottom:'6px',fontSize:'13px'}}>{base.p.name}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',fontSize:'12px'}}>
+                        <div>
+                          <span style={{color:'#9ca3af'}}>Markup: </span>
+                          <span style={{fontFamily:'JetBrains Mono,monospace',color:'#d1d5db'}}>{f1(base.bestM||0)}%</span>
+                          <span style={{color:'#6b7280'}}> → </span>
+                          <span style={{fontWeight:'800',fontFamily:'JetBrains Mono,monospace',color:diff>=0?'#4ade80':'#f87171'}}>{f1(sim.bestM||0)}%</span>
+                        </div>
+                        <div>
+                          <span style={{color:'#9ca3af'}}>Best var: </span>
+                          <span style={{fontWeight:'800',fontFamily:'JetBrains Mono,monospace',color:profitDiff>=0?'#4ade80':'#f87171'}}>{profitDiff>=0?'+':''}{f2(profitDiff)} ₹</span>
+                        </div>
+                      </div>
+                      {sim.pvs.length>1&&(
+                        <div style={{display:'flex',gap:'6px',flexWrap:'wrap',marginTop:'6px'}}>
+                          {sim.pvs.map((v,vi)=>{
+                            const vc=sim.vcs[vi];
+                            const bvc=base.vcs[vi];
+                            if(!vc||!bvc) return null;
+                            const d=vc.markupPct-bvc.markupPct;
+                            return <div key={v.id} style={{fontSize:'11px',background:'#1c1c2e',padding:'3px 8px',borderRadius:'6px'}}>
+                              <span style={{color:'#9ca3af'}}>₹{v.mrp}: </span>
+                              <span style={{color:d>=0?'#4ade80':'#f87171',fontWeight:'700',fontFamily:'JetBrains Mono,monospace'}}>{d>=0?'+':''}{f1(d)}%</span>
+                            </div>;
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SETTINGS / OVERHEAD
+// ═══════════════════════════════════════════════════════════════════════════
+function Settings({oh}) {
+  const [lab,setLab]=useState('');
+  const [boi,setBoi]=useState('');
+  const [ele,setEle]=useState('');
+  const [ind,setInd]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [ok,setOk]=useState(false);
+
+  useEffect(()=>{setLab(oh.labourPerKg||'');setBoi(oh.boilerFuelPerKg||'');setEle(oh.electricityPerKg||'');setInd(oh.indirectPerKg||'');},[oh]);
+
+  const total=num(lab)+num(boi)+num(ele)+num(ind);
+
+  const save=async()=>{
+    setBusy(true);
+    try{
+      const rates={labourPerKg:num(lab),boilerFuelPerKg:num(boi),electricityPerKg:num(ele),indirectPerKg:num(ind)};
+      await db.collection(C.OH).doc('rates').set({...rates,history:FV.arrayUnion({...rates,date:today()})},{merge:true});
+      setOk(true); setTimeout(()=>setOk(false),2500);
+    } finally{setBusy(false);}
+  };
+
+  const hist=(oh.history||[]).slice().reverse().slice(0,10);
+
+  return (
+    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'16px'}}>
+      <SecHdr title="Overhead Rates (₹ per kg)" />
+      <InfoBox>💡 These rates are applied at final product level on every kg of finished namkeen/snack. Update monthly based on your cost analysis.</InfoBox>
+      <Card>
+        <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+          {[{l:'👷 Labour Cost',v:lab,s:setLab,d:'Worker wages per kg of production'},{l:'🔥 Boiler / Fuel',v:boi,s:setBoi,d:'Fuel cost for frying operations'},{l:'⚡ Electricity',v:ele,s:setEle,d:'Power consumption per kg'},{l:'📋 Indirect Overheads',v:ind,s:setInd,d:'Admin, maintenance, misc per kg'}].map(x=>(
+            <div key={x.l} style={{display:'grid',gridTemplateColumns:'1fr 100px',gap:'10px',alignItems:'center'}}>
+              <div>
+                <div style={{fontWeight:'700',fontSize:'13px'}}>{x.l}</div>
+                <div style={{fontSize:'11px',color:'#9ca3af'}}>{x.d}</div>
+              </div>
+              <Inp value={x.v} onChange={x.s} type="number" placeholder="₹/kg" />
+            </div>
+          ))}
+          <div style={{borderTop:'2px solid #e8851b',paddingTop:'12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <div style={{fontWeight:'800',fontSize:'14px'}}>Total Overhead</div>
+              <div style={{fontSize:'11px',color:'#9ca3af'}}>Added to every kg of finished product</div>
+            </div>
+            <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'20px',color:'#e8851b'}}>₹{f2(total)}/kg</div>
+          </div>
+          <Btn onClick={save} disabled={busy} full>{busy?'Saving…':ok?'✅ Saved!':'Save Overhead Rates'}</Btn>
+        </div>
+      </Card>
+
+      {hist.length>0&&(
+        <div>
+          <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px'}}>Rate Change History</div>
+          {hist.map((h,i)=>(
+            <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:i%2===0?'#fff':'#f9fafb',borderRadius:'8px',marginBottom:'4px',fontSize:'12px'}}>
+              <span style={{color:'#6b7280'}}>{h.date}</span>
+              <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',color:'#374151'}}>
+                L:₹{h.labourPerKg} · B:₹{h.boilerFuelPerKg} · E:₹{h.electricityPerKg} · I:₹{h.indirectPerKg}
+                <span style={{fontWeight:'800',color:'#e8851b'}}> = ₹{f2(num(h.labourPerKg)+num(h.boilerFuelPerKg)+num(h.electricityPerKg)+num(h.indirectPerKg))}/kg</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════════════════════
+function App() {
+  const [tab,setTab]=useState('dashboard');
+  const [rms,rmsL]     = useCol(C.RM);
+  const [subs,subsL]   = useCol(C.SUB);
+  const [prods,prodsL] = useCol(C.PROD);
+  const [vars,varsL]   = useCol(C.VAR);
+  const oh             = useOverhead();
+
+  const loading = rmsL||subsL||prodsL||varsL;
+
+  const navToProduct = prod => { setTab('products'); setTimeout(()=>window.__navProd&&window.__navProd(prod),50); };
+
+  const TABS=[
+    {id:'dashboard',e:'📊',l:'Dashboard'},
+    {id:'ingredients',e:'🌾',l:'Ingredients'},
+    {id:'subrecipes',e:'⚙️',l:'Sub-Recipes'},
+    {id:'products',e:'🏭',l:'Products'},
+    {id:'settings',e:'🔧',l:'Settings'},
+  ];
+
+  if(loading) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#f8f4ef'}}>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontSize:'48px',marginBottom:'12px'}}>🍘</div>
+        <div style={{fontWeight:'800',color:'#e8851b',fontSize:'16px'}}>Loading Maruti Costing…</div>
+        <div style={{color:'#9ca3af',fontSize:'12px',marginTop:'6px'}}>Connecting to Firebase…</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:'100vh',background:'#f8f4ef',maxWidth:'540px',margin:'0 auto',display:'flex',flexDirection:'column'}}>
+      {/* Header */}
+      <div style={{background:'linear-gradient(135deg,#1c1c2e,#2d1810)',padding:'13px 16px',position:'sticky',top:0,zIndex:20}}>
+        <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+          <span style={{fontSize:'22px'}}>🍘</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:'800',fontSize:'15px',color:'#fff'}}>Maruti Namkeen Costing</div>
+            <div style={{fontSize:'10px',color:'#e8851b',fontWeight:'700',letterSpacing:'1px',textTransform:'uppercase'}}>
+              {rms.length} RM · {subs.length} Sub-recipes · {prods.length} Products · {vars.length} Variants
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:'auto',paddingBottom:'68px'}}>
+        {tab==='dashboard'   &&<Dashboard products={prods} variants={vars} rms={rms} subs={subs} oh={oh} onGo={p=>{setTab('products');}}/>}
+        {tab==='ingredients' &&<RawMaterials rms={rms} />}
+        {tab==='subrecipes'  &&<SubRecipes subs={subs} rms={rms} />}
+        {tab==='products'    &&<Products products={prods} variants={vars} rms={rms} subs={subs} oh={oh} />}
+        {tab==='settings'    &&<Settings oh={oh} />}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:'540px',background:'#fff',borderTop:'1px solid #e5e7eb',display:'grid',gridTemplateColumns:'repeat(5,1fr)',zIndex:20}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{border:'none',background:'transparent',padding:'9px 4px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',borderTop:tab===t.id?'3px solid #e8851b':'3px solid transparent'}}>
+            <span style={{fontSize:'17px'}}>{t.e}</span>
+            <span style={{fontSize:'9px',fontWeight:'700',fontFamily:'Sora,sans-serif',color:tab===t.id?'#e8851b':'#9ca3af',textTransform:'uppercase',letterSpacing:'0.4px'}}>{t.l}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
