@@ -1113,7 +1113,6 @@ function Products({products,variants,rms,subs,oh}) {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
 function Dashboard({products,variants,rms,subs,oh,onGo}) {
-  // whatIfPrices: { [rmId]: newAbsolutePrice }
   const [whatIf, setWhatIf] = useState({});
   const [rmSearch, setRmSearch] = useState('');
 
@@ -1123,108 +1122,156 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
     return m;
   },[variants]);
 
-  // Build simulated RM list — replace currentRate where whatIf has a value
   const simRms = useMemo(()=>
     rms.map(r=> whatIf[r.id]!==undefined && whatIf[r.id]!=='' ? {...r, currentRate:num(whatIf[r.id])} : r),
     [rms, whatIf]);
 
   const hasAnyWhatIf = Object.values(whatIf).some(v=>v!=='');
 
-  // Compute base and whatif for all products
-  const rows = useMemo(()=>{
-    return products.map(p=>{
+  const rows = useMemo(()=>
+    products.map(p=>{
       const pcBase = calcProduct(p, rms, subs);
       const pcSim  = calcProduct(p, simRms, subs);
       const pvs = varByProd[p.id]||[];
-      const varRows = pvs.map(v=>{
-        const vcBase = calcVariant(v, pcBase, oh);
-        const vcSim  = calcVariant(v, pcSim,  oh);
-        return {v, vcBase, vcSim};
-      });
+      const varRows = pvs.map(v=>({
+        v,
+        vcBase: calcVariant(v, pcBase, oh),
+        vcSim:  calcVariant(v, pcSim,  oh),
+      }));
       return {p, pcBase, varRows};
-    });
-  },[products, rms, simRms, subs, oh, varByProd]);
-
-  const resetAll = ()=>setWhatIf({});
+    }),
+  [products, rms, simRms, subs, oh, varByProd]);
 
   const filteredRms = rms.filter(r=>r.name.toLowerCase().includes(rmSearch.toLowerCase()));
+  const resetAll = ()=>setWhatIf({});
+  const changedCount = Object.values(whatIf).filter(v=>v!=='').length;
 
   if(products.length===0) return (
-    <div style={{padding:'16px'}}>
-      <Empty icon="🏭" text="No products yet. Add Raw Materials → Sub-Recipes → Products to get started." />
+    <div style={{padding:'40px',textAlign:'center'}}>
+      <div style={{fontSize:'48px',marginBottom:'16px'}}>🏭</div>
+      <div style={{fontWeight:'700',fontSize:'16px',color:'#374151'}}>No products yet.</div>
+      <div style={{color:'#9ca3af',marginTop:'8px'}}>Add Raw Materials → Sub-Recipes → Products to get started.</div>
     </div>
   );
 
-  return (
-    <div style={{padding:'12px', display:'flex', flexDirection:'column', gap:'14px'}}>
+  // ── PANEL STYLES ──
+  const HEADER_H = 56; // px — top header bar height
+  const panelH = `calc(100vh - ${HEADER_H}px)`;
 
-      {/* ── SEGMENT 1: Product Margin Table ── */}
-      <div>
-        <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px'}}>
-          📊 Segment 1 — Product Margins {hasAnyWhatIf && <span style={{color:'#a78bfa',marginLeft:'8px'}}>· What-If Active</span>}
+  return (
+    <div style={{display:'flex', width:'100%', height:panelH, overflow:'hidden'}}>
+
+      {/* ══════════════════════════════════════════
+          SEGMENT 1 — 60% — Product Margin Table
+      ══════════════════════════════════════════ */}
+      <div style={{width:'60%', display:'flex', flexDirection:'column', borderRight:'2px solid #e5e7eb'}}>
+
+        {/* S1 Header */}
+        <div style={{padding:'10px 14px', borderBottom:'1px solid #e5e7eb', background:'#fff', flexShrink:0, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:'11px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
+              📊 Product Margins
+            </div>
+            <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>
+              {rows.length} products · {rows.reduce((s,r)=>s+r.varRows.length,0)} variants
+              {hasAnyWhatIf && <span style={{color:'#a78bfa',fontWeight:'700',marginLeft:'8px'}}>· What-If Active ({changedCount} changed)</span>}
+            </div>
+          </div>
         </div>
 
-        {/* Table header */}
-        <div style={{borderRadius:'12px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 44px 68px 68px 60px 60px',background:'#1c1c2e',padding:'8px 10px',gap:'4px',alignItems:'center'}}>
-            {['Product / Variant','Fill','Cur %','WI %','Cur ₹','WI ₹'].map((h,i)=>(
-              <div key={h} style={{fontSize:'10px',fontWeight:'700',color:i>=2?'#a78bfa':'rgba(255,255,255,0.7)',textAlign:i===0?'left':'center'}}>{h}</div>
-            ))}
-          </div>
+        {/* S1 Table Header — sticky */}
+        <div style={{
+          display:'grid', gridTemplateColumns:'1.8fr 0.6fr 0.8fr 0.8fr 0.8fr 0.8fr',
+          padding:'7px 14px', gap:'6px', background:'#1c1c2e', flexShrink:0
+        }}>
+          {[
+            {l:'Product / Variant', a:'left'},
+            {l:'Fill', a:'center'},
+            {l:'Cur %', a:'center', purple:true},
+            {l:'WI %', a:'center', purple:true},
+            {l:'Cur ₹', a:'center', purple:true},
+            {l:'WI ₹', a:'center', purple:true},
+          ].map(h=>(
+            <div key={h.l} style={{fontSize:'10px',fontWeight:'700',textAlign:h.a,color:h.purple?'#a78bfa':'rgba(255,255,255,0.65)'}}>{h.l}</div>
+          ))}
+        </div>
 
-          {rows.map(({p, pcBase, varRows},pi)=>(
-            <div key={p.id}>
+        {/* S1 Scrollable body */}
+        <div style={{flex:1, overflowY:'auto'}}>
+          {rows.map(({p, pcBase, varRows}, pi)=>(
+            <div key={p.id} style={{borderBottom:'2px solid #f3f4f6'}}>
               {/* Product name row */}
-              <div style={{padding:'7px 10px',background:'#f9fafb',borderTop:'1px solid #e5e7eb',cursor:'pointer'}}
-                onClick={()=>onGo(p)}>
+              <div
+                onClick={()=>onGo(p)}
+                style={{
+                  padding:'8px 14px', background:'#f8f4ef', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:'10px',
+                  borderBottom:'1px solid #e5e7eb',
+                  transition:'background 0.15s',
+                }}
+                onMouseEnter={e=>e.currentTarget.style.background='#fde68a'}
+                onMouseLeave={e=>e.currentTarget.style.background='#f8f4ef'}
+              >
                 <span style={{fontWeight:'800',fontSize:'13px',color:'#1c1c1c'}}>{p.name}</span>
-                <span style={{fontSize:'10px',color:'#9ca3af',marginLeft:'8px',textTransform:'uppercase'}}>{p.category}</span>
-                {pcBase && <span style={{fontSize:'10px',color:'#e8851b',marginLeft:'8px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(pcBase.namkeenCostPerKg)}/kg</span>}
+                <span style={{fontSize:'10px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px'}}>{p.category}</span>
+                {pcBase && <span style={{fontSize:'10px',color:'#e8851b',fontFamily:'JetBrains Mono,monospace',marginLeft:'auto'}}>₹{f2(pcBase.namkeenCostPerKg)}/kg namkeen cost</span>}
               </div>
 
               {/* Variant rows */}
-              {varRows.map(({v, vcBase, vcSim},vi)=>{
+              {varRows.map(({v, vcBase, vcSim}, vi)=>{
                 if(!vcBase) return null;
-                const mDiff = vcSim ? vcSim.markupPct - vcBase.markupPct : 0;
-                const pDiff = vcSim ? vcSim.profit - vcBase.profit : 0;
-                const wiActive = hasAnyWhatIf;
+                const mDiff  = vcSim ? vcSim.markupPct - vcBase.markupPct : 0;
+                const prDiff = vcSim ? vcSim.profit - vcBase.profit : 0;
+                const wiOn   = hasAnyWhatIf;
                 return (
                   <div key={v.id} style={{
-                    display:'grid',gridTemplateColumns:'1fr 44px 68px 68px 60px 60px',
-                    padding:'7px 10px',gap:'4px',alignItems:'center',
-                    borderTop:'1px solid #f3f4f6',
-                    background: vi%2===0?'#fff':'#fafafa'
+                    display:'grid', gridTemplateColumns:'1.8fr 0.6fr 0.8fr 0.8fr 0.8fr 0.8fr',
+                    padding:'6px 14px', gap:'6px', alignItems:'center',
+                    background: vi%2===0 ? '#fff' : '#fafafa',
+                    borderBottom:'1px solid #f3f4f6',
                   }}>
-                    {/* Name */}
-                    <div style={{fontSize:'11px',color:'#6b7280',paddingLeft:'8px'}}>
-                      <span style={{fontWeight:'700',color:'#374151'}}>₹{v.mrp}</span>
-                      <span style={{marginLeft:'4px'}}>{v.packingType==='box'?'📦':'👜'}</span>
+                    {/* Variant label */}
+                    <div style={{display:'flex',alignItems:'center',gap:'6px',paddingLeft:'12px'}}>
+                      <span style={{fontSize:'14px'}}>{v.packingType==='box'?'📦':'👜'}</span>
+                      <span style={{fontWeight:'700',fontSize:'12px',color:'#374151'}}>₹{v.mrp} MRP</span>
+                      <span style={{fontSize:'10px',color:'#9ca3af'}}>{v.packingType}</span>
+                      <span style={{fontSize:'10px',color:'#9ca3af',marginLeft:'4px'}}>{vcBase.totalPouches} pcs</span>
                     </div>
+
                     {/* Fill wt */}
                     <div style={{textAlign:'center',fontSize:'11px',color:'#6b7280',fontFamily:'JetBrains Mono,monospace'}}>{v.fillWeightG}g</div>
+
                     {/* Current margin */}
                     <div style={{textAlign:'center'}}>
-                      <span style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'12px',color:mCol(vcBase.markupPct)}}>{f1(vcBase.markupPct)}%</span>
+                      <span style={{
+                        fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'13px',
+                        color:mCol(vcBase.markupPct)
+                      }}>{f1(vcBase.markupPct)}%</span>
                     </div>
+
                     {/* WhatIf margin */}
                     <div style={{textAlign:'center'}}>
-                      {wiActive && vcSim ? (
+                      {wiOn && vcSim ? (
                         <div>
-                          <span style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'12px',color:mCol(vcSim.markupPct)}}>{f1(vcSim.markupPct)}%</span>
-                          {mDiff!==0 && <div style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:mDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{mDiff>0?'+':''}{f1(mDiff)}%</div>}
+                          <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'13px',color:mCol(vcSim.markupPct)}}>{f1(vcSim.markupPct)}%</div>
+                          {mDiff!==0 && <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:mDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{mDiff>0?'▲':'▼'}{Math.abs(f1(mDiff))}%</div>}
                         </div>
-                      ) : <span style={{fontSize:'11px',color:'#d1d5db'}}>—</span>}
+                      ) : <span style={{fontSize:'12px',color:'#d1d5db'}}>—</span>}
                     </div>
+
                     {/* Current profit */}
-                    <div style={{textAlign:'center',fontFamily:'JetBrains Mono,monospace',fontSize:'11px',fontWeight:'700',color:'#374151'}}>₹{Math.round(vcBase.profit)}</div>
+                    <div style={{textAlign:'center'}}>
+                      <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'700',color:'#374151'}}>₹{Math.round(vcBase.profit)}</span>
+                    </div>
+
                     {/* WhatIf profit */}
                     <div style={{textAlign:'center'}}>
-                      {wiActive && vcSim ? (
+                      {wiOn && vcSim ? (
                         <div>
-                          <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',fontWeight:'700',color:mCol(vcSim.markupPct)}}>₹{Math.round(vcSim.profit)}</span>
-                          {pDiff!==0 && <div style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:pDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{pDiff>0?'+':''}{Math.round(pDiff)}</div>}
+                          <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'700',color:mCol(vcSim.markupPct)}}>₹{Math.round(vcSim.profit)}</div>
+                          {prDiff!==0 && <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:prDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{prDiff>0?'+':''}{Math.round(prDiff)}</div>}
                         </div>
-                      ) : <span style={{fontSize:'11px',color:'#d1d5db'}}>—</span>}
+                      ) : <span style={{fontSize:'12px',color:'#d1d5db'}}>—</span>}
                     </div>
                   </div>
                 );
@@ -1234,88 +1281,103 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
         </div>
       </div>
 
-      {/* ── SEGMENT 2: Ingredients What-If ── */}
-      <div>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
-          <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
-            🔮 Segment 2 — What-If Ingredient Prices
+      {/* ══════════════════════════════════════════
+          SEGMENT 2 — 40% — Ingredient What-If
+      ══════════════════════════════════════════ */}
+      <div style={{width:'40%', display:'flex', flexDirection:'column', background:'#fafafa'}}>
+
+        {/* S2 Header */}
+        <div style={{padding:'10px 14px', borderBottom:'1px solid #e5e7eb', background:'#fff', flexShrink:0}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px'}}>
+            <div style={{fontSize:'11px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
+              🔮 What-If Ingredient Prices
+            </div>
+            {hasAnyWhatIf && (
+              <button onClick={resetAll} style={{
+                background:'#fee2e2',border:'none',borderRadius:'7px',
+                padding:'4px 10px',fontSize:'11px',fontWeight:'700',
+                color:'#dc2626',cursor:'pointer',fontFamily:'Sora,sans-serif'
+              }}>Reset All ({changedCount})</button>
+            )}
           </div>
-          {hasAnyWhatIf && (
-            <button onClick={resetAll} style={{background:'#fee2e2',border:'none',borderRadius:'7px',padding:'5px 10px',fontSize:'11px',fontWeight:'700',color:'#dc2626',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
-              Reset All
-            </button>
+          <input
+            value={rmSearch} onChange={e=>setRmSearch(e.target.value)}
+            placeholder="Search ingredient…"
+            style={{width:'100%',border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'7px 12px',fontSize:'12px',background:'#fff'}}
+          />
+          {!hasAnyWhatIf && (
+            <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'6px',lineHeight:'1.5'}}>
+              Type a new price in <strong>What-If ₹</strong> → Segment 1 updates instantly. Change multiple ingredients at once.
+            </div>
           )}
         </div>
 
-        <InfoBox>Type a new price in the <strong>What-If ₹</strong> column for any ingredient. Segment 1 updates instantly. Leave blank = no change. Change as many as needed simultaneously.</InfoBox>
-
-        <div style={{marginTop:'8px',marginBottom:'8px'}}>
-          <input value={rmSearch} onChange={e=>setRmSearch(e.target.value)} placeholder="Search ingredient…"
-            style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'9px 14px',fontSize:'13px',width:'100%'}} />
+        {/* S2 Table header */}
+        <div style={{
+          display:'grid', gridTemplateColumns:'1fr 70px 80px',
+          padding:'7px 14px', gap:'6px', background:'#1c1c2e', flexShrink:0
+        }}>
+          {[{l:'Ingredient',a:'left'},{l:'Current ₹',a:'right'},{l:'What-If ₹',a:'right',purple:true}].map(h=>(
+            <div key={h.l} style={{fontSize:'10px',fontWeight:'700',textAlign:h.a,color:h.purple?'#a78bfa':'rgba(255,255,255,0.65)'}}>{h.l}</div>
+          ))}
         </div>
 
-        <div style={{borderRadius:'12px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-          {/* Table header */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 80px 90px',background:'#1c1c2e',padding:'8px 10px',gap:'6px'}}>
-            {['Ingredient','Current ₹','What-If ₹'].map((h,i)=>(
-              <div key={h} style={{fontSize:'10px',fontWeight:'700',color:i===2?'#a78bfa':'rgba(255,255,255,0.7)',textAlign:i===0?'left':'right'}}>{h}</div>
-            ))}
-          </div>
-
-          {filteredRms.map((rm,i)=>{
+        {/* S2 Scrollable body */}
+        <div style={{flex:1, overflowY:'auto'}}>
+          {filteredRms.map((rm, i)=>{
             const wiVal = whatIf[rm.id];
             const hasWI = wiVal!==undefined && wiVal!=='';
             const wiNum = hasWI ? num(wiVal) : rm.currentRate;
             const diff  = wiNum - rm.currentRate;
             return (
               <div key={rm.id} style={{
-                display:'grid',gridTemplateColumns:'1fr 80px 90px',
-                padding:'7px 10px',gap:'6px',alignItems:'center',
-                borderTop:'1px solid #f3f4f6',
-                background: hasWI ? '#fff9f0' : i%2===0?'#fff':'#fafafa',
-                borderLeft: hasWI ? '3px solid #e8851b' : '3px solid transparent'
+                display:'grid', gridTemplateColumns:'1fr 70px 80px',
+                padding:'6px 14px', gap:'6px', alignItems:'center',
+                borderBottom:'1px solid #f3f4f6',
+                background: hasWI ? '#fff9f0' : i%2===0 ? '#fff' : '#fafafa',
+                borderLeft: hasWI ? '3px solid #e8851b' : '3px solid transparent',
               }}>
                 <div>
-                  <div style={{fontWeight: hasWI?'700':'500', fontSize:'12px', color:'#1c1c1c'}}>{rm.name}</div>
-                  {hasWI && diff!==0 && (
+                  <div style={{fontWeight:hasWI?'700':'500', fontSize:'12px', color:'#1c1c1c'}}>{rm.name}</div>
+                  {hasWI && (
                     <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:diff>0?'#dc2626':'#16a34a',fontWeight:'700'}}>
-                      {diff>0?'+':''}{f2(diff)} ₹/kg change
+                      {diff>0?'▲':'▼'} {diff>0?'+':''}{f2(diff)} ₹/kg
                     </div>
                   )}
                 </div>
-                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',fontSize:'12px',color:'#374151'}}>
+                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'600',color:'#374151'}}>
                   ₹{rm.currentRate}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <input
                     type="number"
                     value={wiVal ?? ''}
-                    placeholder={String(rm.currentRate)}
+                    placeholder="—"
                     onChange={e=>setWhatIf(prev=>({...prev,[rm.id]:e.target.value}))}
                     style={{
-                      width:'82px',border:`1.5px solid ${hasWI?'#e8851b':'#e5e7eb'}`,
-                      borderRadius:'7px',padding:'5px 8px',fontSize:'12px',
-                      textAlign:'right',fontFamily:'JetBrains Mono,monospace',
-                      background: hasWI?'#fff9f0':'#fff',
+                      width:'72px', textAlign:'right',
+                      border:`1.5px solid ${hasWI?'#e8851b':'#e5e7eb'}`,
+                      borderRadius:'6px', padding:'4px 7px',
+                      fontSize:'12px', fontFamily:'JetBrains Mono,monospace',
+                      background: hasWI?'#fff4e6':'#fff',
                       fontWeight: hasWI?'700':'400',
-                      color: hasWI?(diff>0?'#dc2626':'#16a34a'):'#374151'
+                      color: hasWI?(diff>0?'#dc2626':'#16a34a'):'#374151',
                     }}
                   />
                 </div>
               </div>
             );
           })}
+          {filteredRms.length===0 && (
+            <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af',fontSize:'13px'}}>No ingredients found</div>
+          )}
         </div>
-        {filteredRms.length===0 && <Empty icon="🔍" text="No ingredients found" />}
       </div>
     </div>
   );
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SETTINGS / OVERHEAD
-// ═══════════════════════════════════════════════════════════════════════════
 function Settings({oh}) {
   const [lab,setLab]=useState('');
   const [boi,setBoi]=useState('');
@@ -1417,7 +1479,7 @@ function App() {
   );
 
   return (
-    <div style={{minHeight:'100vh',background:'#f8f4ef',maxWidth:'540px',margin:'0 auto',display:'flex',flexDirection:'column'}}>
+    <div style={{minHeight:'100vh',background:'#f8f4ef',maxWidth:tab==='dashboard'?'100%':'540px',margin:'0 auto',display:'flex',flexDirection:'column'}}>
       {/* Header */}
       <div style={{background:'linear-gradient(135deg,#1c1c2e,#2d1810)',padding:'13px 16px',position:'sticky',top:0,zIndex:20}}>
         <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
@@ -1432,7 +1494,7 @@ function App() {
       </div>
 
       {/* Content */}
-      <div style={{flex:1,overflowY:'auto',paddingBottom:'68px'}}>
+      <div style={{flex:1,overflow:tab==='dashboard'?'hidden':'auto',paddingBottom:tab==='dashboard'?'0':'68px'}}>
         {tab==='dashboard'   &&<Dashboard products={prods} variants={vars} rms={rms} subs={subs} oh={oh} onGo={p=>{setTab('products');}}/>}
         {tab==='ingredients' &&<RawMaterials rms={rms} />}
         {tab==='subrecipes'  &&<SubRecipes subs={subs} rms={rms} />}
@@ -1441,7 +1503,7 @@ function App() {
       </div>
 
       {/* Bottom Nav */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:'540px',background:'#fff',borderTop:'1px solid #e5e7eb',display:'grid',gridTemplateColumns:'repeat(5,1fr)',zIndex:20}}>
+      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:tab==='dashboard'?'100%':'540px',background:'#fff',borderTop:'1px solid #e5e7eb',display:'grid',gridTemplateColumns:'repeat(5,1fr)',zIndex:20}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{border:'none',background:'transparent',padding:'9px 4px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',borderTop:tab===t.id?'3px solid #e8851b':'3px solid transparent'}}>
