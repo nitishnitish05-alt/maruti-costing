@@ -336,6 +336,44 @@ function BOMBuilder({bom,onChange,rms,subs=[],allowSubs=true}) {
 // ═══════════════════════════════════════════════════════════════════════════
 // RAW MATERIALS
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Pre-loaded common namkeen ingredients — user can edit/delete any
+const PRESET_RMS = [
+  {name:"Chana Besan",rate:75,tax:0},{name:"Matar Besan",rate:52,tax:0},
+  {name:"Chawal Atta",rate:28,tax:0},{name:"Maida",rate:33,tax:0},
+  {name:"Araroat",rate:30,tax:5},{name:"Chana Daal",rate:72,tax:0},
+  {name:"Masoor Daal (Raw)",rate:70,tax:0},{name:"Cornflakes Raw",rate:30,tax:5},
+  {name:"Oil (Refined)",rate:150,tax:5},{name:"Dana (Raw)",rate:120,tax:0},
+  {name:"Chowmeen / Chips",rate:55,tax:0},{name:"Chiwda",rate:48,tax:5},
+  {name:"Red Mirchi",rate:175,tax:0},{name:"Mirchi Tel (Laungi)",rate:800,tax:18},
+  {name:"Garam Masala",rate:435,tax:0},{name:"Kala Namak",rate:24,tax:0},
+  {name:"Safed Namak",rate:6,tax:0},{name:"Khatai",rate:110,tax:0},
+  {name:"Moongfali (Raw)",rate:120,tax:0},{name:"Haldi",rate:170,tax:0},
+  {name:"Chat Masala",rate:135,tax:0},{name:"Heeng",rate:15000,tax:0},
+  {name:"Aloo Lachha",rate:115,tax:0},{name:"Makhana",rate:950,tax:0},
+  {name:"Ajvain",rate:190,tax:0},{name:"Laungi Mirch",rate:470,tax:0},
+  {name:"Matar Chanai",rate:45,tax:0},{name:"Chana Roasted",rate:90,tax:0},
+  {name:"Zeera",rate:270,tax:0},{name:"Aloo Flakes",rate:84,tax:5},
+  {name:"Sabudana Powder",rate:60,tax:0},{name:"Moong Daal",rate:115,tax:0},
+  {name:"Aloo Bhujia Masala",rate:205,tax:5},{name:"Ajino Moto",rate:125,tax:18},
+  {name:"I+G",rate:800,tax:18},{name:"Chini Sugar",rate:43,tax:0},
+  {name:"Saunf",rate:110,tax:0},{name:"Laung",rate:850,tax:0},
+  {name:"Sonth",rate:200,tax:0},{name:"Kali Mirch",rate:725,tax:0},
+  {name:"Dal Chini",rate:170,tax:0},{name:"Lehsun",rate:100,tax:0},
+  {name:"Makka Atta",rate:31,tax:0},{name:"Maggi Masala",rate:90,tax:0},
+  {name:"Sannata",rate:95,tax:0},{name:"Tapioca Starch",rate:60,tax:0},
+  {name:"Sev Samosa",rate:105,tax:0},{name:"Dhania (Powder)",rate:125,tax:0},
+  {name:"Makka Grit",rate:26,tax:0},{name:"Chawal Grit",rate:27,tax:0},
+  {name:"Onion Powder",rate:170,tax:0},{name:"Nausadar",rate:70,tax:0},
+  {name:"Malto",rate:50,tax:18},{name:"Glucose",rate:60,tax:18},
+  {name:"Peprika",rate:640,tax:18},{name:"Chawal Khanda",rate:27,tax:0},
+  {name:"Makka Tukdi",rate:25,tax:0},{name:"Calcium",rate:110,tax:0},
+  {name:"Puff Noodles",rate:55,tax:0},{name:"Citric Acid",rate:95,tax:18},
+  {name:"Ratlami Masala",rate:190,tax:0},{name:"Kaju",rate:950,tax:0},
+  {name:"Namakpara",rate:75,tax:0},{name:"Peela Mirch Khada",rate:200,tax:0},
+  {name:"Moongfali Dana",rate:120,tax:0},
+];
+
 function RMForm({rm,onDone}) {
   const [name,setName]=useState(rm?.name||'');
   const [rate,setRate]=useState(rm?.currentRate||'');
@@ -374,42 +412,165 @@ function RMForm({rm,onDone}) {
   );
 }
 
+// BULK ENTRY — spreadsheet style, all rows at once
+function BulkRMEntry({existingNames, onDone}) {
+  const EMPTY = () => ({name:'',rate:'',tax:'0',_id:Date.now()+Math.random()});
+  const [rows,setRows] = useState(()=>[...PRESET_RMS.map(p=>({...p,tax:String(p.tax),_id:Math.random()})),...Array(5).fill(null).map(EMPTY)]);
+  const [busy,setBusy] = useState(false);
+  const [progress,setProgress] = useState('');
+
+  const addRows = n => setRows(r=>[...r,...Array(n).fill(null).map(EMPTY)]);
+  const updRow = (idx,field,val) => setRows(r=>r.map((row,i)=>i===idx?{...row,[field]:val}:row));
+  const delRow = idx => setRows(r=>r.filter((_,i)=>i!==idx));
+
+  const validRows = rows.filter(r=>r.name.trim()&&r.rate!=='');
+
+  const saveAll = async()=>{
+    if(!validRows.length) return;
+    setBusy(true);
+    try{
+      const batch = db.batch();
+      let count=0;
+      for(const row of validRows){
+        const nm = row.name.trim();
+        if(existingNames.includes(nm.toLowerCase())) continue; // skip duplicates
+        const ref = db.collection(C.RM).doc();
+        batch.set(ref,{name:nm,currentRate:num(row.rate),taxPct:num(row.tax)||0,rateHistory:[{rate:num(row.rate),date:today()}]});
+        count++;
+        if(count%400===0){ await batch.commit(); setProgress(`Saved ${count}…`); }
+      }
+      await batch.commit();
+      setProgress(`✅ ${count} ingredients saved!`);
+      setTimeout(onDone, 1200);
+    } catch(e){setProgress('Error: '+e.message);}
+    finally{setBusy(false);}
+  };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+      <InfoBox>📋 All 65 common namkeen ingredients are pre-loaded below. Update rates to match your current prices, remove what you don't use, add anything extra. Then click Save All.</InfoBox>
+      <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{fontSize:'12px',color:'#6b7280'}}><strong>{validRows.length}</strong> valid rows ready</div>
+        <Btn sm v="secondary" onClick={()=>addRows(5)}>+ 5 rows</Btn>
+        <Btn sm v="secondary" onClick={()=>addRows(10)}>+ 10 rows</Btn>
+      </div>
+
+      {/* Sticky header */}
+      <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 90px 70px 28px',background:'#e8851b',padding:'8px 10px',gap:'6px',position:'sticky',top:0,zIndex:2}}>
+          {['Ingredient Name','Rate ₹/kg','GST %',''].map(h=>(
+            <div key={h} style={{fontSize:'10px',fontWeight:'700',color:'#fff'}}>{h}</div>
+          ))}
+        </div>
+        <div style={{maxHeight:'55vh',overflowY:'auto'}}>
+          {rows.map((row,idx)=>(
+            <div key={row._id} style={{display:'grid',gridTemplateColumns:'1fr 90px 70px 28px',padding:'5px 8px',borderTop:'1px solid #f3f4f6',background:idx%2===0?'#fff':'#fafafa',gap:'6px',alignItems:'center'}}>
+              <input value={row.name} onChange={e=>updRow(idx,'name',e.target.value)}
+                placeholder={`Ingredient ${idx+1}`}
+                style={{border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 8px',fontSize:'12px',width:'100%'}} />
+              <input type="number" value={row.rate} onChange={e=>updRow(idx,'rate',e.target.value)}
+                placeholder="₹/kg"
+                style={{border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 8px',fontSize:'12px',width:'100%',textAlign:'right',fontFamily:'JetBrains Mono,monospace'}} />
+              <select value={row.tax} onChange={e=>updRow(idx,'tax',e.target.value)}
+                style={{border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 4px',fontSize:'12px',background:'#fff',width:'100%'}}>
+                {['0','5','12','18','28'].map(t=><option key={t} value={t}>{t}%</option>)}
+              </select>
+              <button onClick={()=>delRow(idx)}
+                style={{background:'#fee2e2',border:'none',borderRadius:'5px',color:'#dc2626',cursor:'pointer',fontWeight:'700',fontSize:'14px',width:'22px',height:'22px',lineHeight:'1'}}>×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {progress&&<div style={{textAlign:'center',fontWeight:'700',color:'#e8851b',fontSize:'13px'}}>{progress}</div>}
+
+      <div style={{display:'flex',gap:'8px',position:'sticky',bottom:0,background:'#fff',padding:'8px 0'}}>
+        <Btn v="secondary" onClick={onDone} full>Cancel</Btn>
+        <Btn onClick={saveAll} disabled={busy||!validRows.length} full>
+          {busy?`Saving ${validRows.length} items…`:`💾 Save All (${validRows.length} items)`}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function RawMaterials({rms}) {
   const [q,setQ]=useState('');
-  const [form,setForm]=useState(false);
+  const [mode,setMode]=useState('list'); // 'list' | 'bulk' | 'add'
   const [edit,setEdit]=useState(null);
   const [hist,setHist]=useState(null);
   const filtered=rms.filter(r=>r.name.toLowerCase().includes(q.toLowerCase()));
+  const existingNames = rms.map(r=>r.name.toLowerCase());
 
   const del = async r=>{if(confirm(`Delete "${r.name}"?`)) await db.collection(C.RM).doc(r.id).delete();};
 
+  if(mode==='bulk') return (
+    <div style={{padding:'16px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'14px'}}>
+        <Btn sm v="ghost" onClick={()=>setMode('list')}>← Back</Btn>
+        <div style={{fontWeight:'800',fontSize:'15px'}}>Bulk Add Ingredients</div>
+      </div>
+      <BulkRMEntry existingNames={existingNames} onDone={()=>setMode('list')} />
+    </div>
+  );
+
+  if(mode==='add'||edit) return (
+    <div style={{padding:'16px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'14px'}}>
+        <Btn sm v="ghost" onClick={()=>{setMode('list');setEdit(null);}}>← Back</Btn>
+        <div style={{fontWeight:'800',fontSize:'15px'}}>{edit?'Edit Ingredient':'Add Ingredient'}</div>
+      </div>
+      <RMForm rm={edit} onDone={()=>{setMode('list');setEdit(null);}} />
+    </div>
+  );
+
   return (
     <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
-      <SecHdr title={`Raw Materials (${rms.length})`} action={<Btn sm onClick={()=>{setEdit(null);setForm(true);}}>+ Add</Btn>} />
-      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…"
-        style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',width:'100%'}} />
-      <InfoBox>💡 Tap ✏️ to update rate — change is saved with date. All product costs update instantly.</InfoBox>
-      <div style={{borderRadius:'12px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',background:'#e8851b',padding:'8px 12px',gap:'6px'}}>
-          {['Ingredient','Rate/kg','GST',''].map(h=><div key={h} style={{fontSize:'10px',fontWeight:'700',color:'#fff',textAlign:h&&h!=='Ingredient'?'right':'left'}}>{h}</div>)}
-        </div>
-        {filtered.length===0?<Empty icon="🔍" text="No results" />:filtered.map((rm,i)=>(
-          <div key={rm.id} style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',padding:'9px 12px',borderTop:'1px solid #f3f4f6',background:i%2===0?'#fff':'#fafafa',alignItems:'center',gap:'6px'}}>
-            <div>
-              <div style={{fontWeight:'600',fontSize:'13px'}}>{rm.name}</div>
-              <div style={{fontSize:'10px',color:'#9ca3af'}}>{(rm.rateHistory||[]).length} changes</div>
-            </div>
-            <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',fontSize:'13px'}}>₹{rm.currentRate}</div>
-            <div style={{textAlign:'right',fontSize:'12px',color:rm.taxPct>0?'#e8851b':'#9ca3af'}}>{rm.taxPct}%</div>
-            <div style={{display:'flex',gap:'3px',justifyContent:'flex-end'}}>
-              <Btn sm v="ghost" onClick={()=>setHist(rm)}>📈</Btn>
-              <Btn sm v="secondary" onClick={()=>{setEdit(rm);setForm(true);}}>✏️</Btn>
-              <Btn sm v="danger" onClick={()=>del(rm)}>🗑</Btn>
-            </div>
+      <SecHdr title={`Raw Materials (${rms.length})`}
+        action={
+          <div style={{display:'flex',gap:'6px'}}>
+            {rms.length===0&&<Btn sm v="secondary" onClick={()=>setMode('bulk')}>📋 Bulk Add</Btn>}
+            <Btn sm onClick={()=>setMode('add')}>+ Add</Btn>
           </div>
-        ))}
-      </div>
-      {form&&<Modal title={edit?'Edit Ingredient':'Add Ingredient'} onClose={()=>setForm(false)}><RMForm rm={edit} onDone={()=>setForm(false)} /></Modal>}
+        } />
+
+      {rms.length===0?(
+        <div style={{textAlign:'center',padding:'30px 20px',display:'flex',flexDirection:'column',gap:'12px',alignItems:'center'}}>
+          <div style={{fontSize:'40px'}}>🌾</div>
+          <div style={{fontWeight:'700',fontSize:'15px',color:'#374151'}}>No ingredients yet</div>
+          <div style={{fontSize:'13px',color:'#9ca3af'}}>Use Bulk Add to enter all your ingredients at once — 65 common namkeen ingredients are pre-loaded for you.</div>
+          <Btn onClick={()=>setMode('bulk')} style={{marginTop:'4px'}}>📋 Open Bulk Entry</Btn>
+        </div>
+      ):(
+        <>
+          <div style={{display:'flex',gap:'8px'}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…"
+              style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',flex:1}} />
+            <Btn sm v="secondary" onClick={()=>setMode('bulk')}>📋 Bulk</Btn>
+          </div>
+          <InfoBox>💡 Tap ✏️ to update rate — change is saved with date. All product costs cascade instantly.</InfoBox>
+          <div style={{borderRadius:'12px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',background:'#e8851b',padding:'8px 12px',gap:'6px'}}>
+              {['Ingredient','Rate/kg','GST',''].map(h=><div key={h} style={{fontSize:'10px',fontWeight:'700',color:'#fff',textAlign:h&&h!=='Ingredient'?'right':'left'}}>{h}</div>)}
+            </div>
+            {filtered.length===0?<Empty icon="🔍" text="No results" />:filtered.map((rm,i)=>(
+              <div key={rm.id} style={{display:'grid',gridTemplateColumns:'1fr 72px 44px 80px',padding:'9px 12px',borderTop:'1px solid #f3f4f6',background:i%2===0?'#fff':'#fafafa',alignItems:'center',gap:'6px'}}>
+                <div>
+                  <div style={{fontWeight:'600',fontSize:'13px'}}>{rm.name}</div>
+                  <div style={{fontSize:'10px',color:'#9ca3af'}}>{(rm.rateHistory||[]).length} changes</div>
+                </div>
+                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',fontSize:'13px'}}>₹{rm.currentRate}</div>
+                <div style={{textAlign:'right',fontSize:'12px',color:rm.taxPct>0?'#e8851b':'#9ca3af'}}>{rm.taxPct}%</div>
+                <div style={{display:'flex',gap:'3px',justifyContent:'flex-end'}}>
+                  <Btn sm v="ghost" onClick={()=>setHist(rm)}>📈</Btn>
+                  <Btn sm v="secondary" onClick={()=>setEdit(rm)}>✏️</Btn>
+                  <Btn sm v="danger" onClick={()=>del(rm)}>🗑</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {hist&&(
         <Modal title={`Rate History — ${hist.name}`} onClose={()=>setHist(null)}>
           <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
