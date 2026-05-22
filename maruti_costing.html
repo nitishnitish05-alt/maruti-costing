@@ -207,12 +207,14 @@ function Sel({label,value,onChange,opts,placeholder}) {
 
 function Modal({title,onClose,children}) {
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center'}}
-      onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:'540px',maxHeight:'92vh',overflowY:'auto'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 16px',borderBottom:'1px solid #f3f4f6',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-          <div style={{fontWeight:'800',fontSize:'15px'}}>{title}</div>
-          <button onClick={onClose} style={{background:'#f3f4f6',border:'none',borderRadius:'50%',width:'30px',height:'30px',cursor:'pointer',fontSize:'18px',lineHeight:'1'}}>×</button>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:'1px solid #f3f4f6',position:'sticky',top:0,background:'#fff',zIndex:1}}>
+          <button onClick={onClose} style={{display:'flex',alignItems:'center',gap:'5px',background:'#f3f4f6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:"Sora,sans-serif",color:'#374151'}}>
+            ← Back
+          </button>
+          <div style={{fontWeight:'800',fontSize:'14px',flex:1,textAlign:'center',padding:'0 8px'}}>{title}</div>
+          <div style={{width:'64px'}}></div>
         </div>
         <div style={{padding:'16px'}}>{children}</div>
       </div>
