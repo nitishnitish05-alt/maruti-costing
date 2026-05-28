@@ -196,7 +196,8 @@ function calcVariant(variant, pc, oh) {
   const lam = variant.laminate||{};
   const lamCostPerPouch = lam.ratePerKg&&lam.pouchesPerKg ? num(lam.ratePerKg)/num(lam.pouchesPerKg) : 0;
   const lamTaxPerPouch  = lam.ratePerKg&&lam.pouchesPerKg ? (num(lam.ratePerKg)*0.18)/num(lam.pouchesPerKg) : 0;
-  const totalCostPerPouch = nmCostPerPouch + lamCostPerPouch;
+  const toyCostPerPouch = num(variant.toyCostPerPouch)||0;
+  const totalCostPerPouch = nmCostPerPouch + lamCostPerPouch + toyCostPerPouch;
   const totalTaxPerPouch  = nmTaxPerPouch  + lamTaxPerPouch;
 
   let totalPouches=0, packCost=0, packTax=0;
@@ -227,7 +228,7 @@ function calcVariant(variant, pc, oh) {
   const grossPct    = effectiveSP>0 ? (profit/effectiveSP)*100 : 0;
 
   return {
-    totalOH, totalCostPerKg, nmCostPerPouch, lamCostPerPouch, totalCostPerPouch,
+    totalOH, totalCostPerKg, nmCostPerPouch, lamCostPerPouch, toyCostPerPouch, totalCostPerPouch,
     totalPouches, packCost, packTax, pouchCost, preTaxCost,
     inputTax, outputTax, netGST, netCost,
     effectiveSP, profit, markupPct, grossPct,
@@ -821,6 +822,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
   const [sch,setSch]=useState(vt?.scheme||'');
   const [frL,setFrL]=useState(vt?.freightLocal||40);
   const [frO,setFrO]=useState(vt?.freightOutstation||'');
+  const [toy,setToy]=useState(vt?.toyCostPerPouch||'');
   const [busy,setBusy]=useState(false);
 
   const totalPouches = pt==='box'?num(ctPk):num(pbPk)*num(mbCt);
@@ -834,6 +836,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
         laminate:{sizeDesc:lamSz,ratePerKg:num(lamRt),pouchesPerKg:num(lamPk)},
         sellingPricePerUnit:num(sp), scheme:num(sch)||0,
         freightLocal:num(frL)||40, freightOutstation:num(frO)||60,
+        toyCostPerPouch:num(toy)||0,
         ...(pt==='box'?{
           carton:{type:ctType,rate:num(ctRt),taxPct:5,pouchesPerCarton:num(ctPk)},
           primaryBag:null, masterBag:null
@@ -919,6 +922,18 @@ function VarForm({v:vt,productId,productName,onDone}) {
           <Inp label="Freight Local ₹" value={frL} onChange={setFrL} type="number" />
           <Inp label="Freight Outstation ₹" value={frO} onChange={setFrO} type="number" />
         </Row2>
+        <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'8px',padding:'10px 12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+          <div style={{fontSize:'10px',fontWeight:'700',color:'#166534',textTransform:'uppercase',letterSpacing:'0.8px'}}>🧸 Toy / Insert (Optional)</div>
+          <Row2>
+            <Inp label="Toy Cost ₹/pouch" value={toy} onChange={setToy} type="number" placeholder="0" />
+            <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+              <label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>Total Toy Cost / Unit</label>
+              <div style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',background:'#f9fafb',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',color:'#166534'}}>
+                {toy ? `₹${(num(toy) * (pt==='box'?num(ctPk):num(pbPk)*num(mbCt))).toFixed(2)}` : '—'}
+              </div>
+            </div>
+          </Row2>
+        </div>
       </div>
 
       <Row2>
@@ -958,6 +973,7 @@ function VarDetail({variant,pc,oh}) {
       <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
         <CRow label="Namkeen cost/pouch" note={`${variant.fillWeightG}g × ₹${f2(c.totalCostPerKg)}/kg (incl overhead ₹${f2(c.totalOH)}/kg)`} val={`₹${f2(c.nmCostPerPouch)}`} />
         <CRow label="Laminate cost/pouch" note={`₹${variant.laminate?.ratePerKg}/kg ÷ ${variant.laminate?.pouchesPerKg} pcs`} val={`₹${f2(c.lamCostPerPouch)}`} />
+        {c.toyCostPerPouch>0 && <CRow label="Toy / Insert cost/pouch" note={`₹${f2(c.toyCostPerPouch)} × ${c.totalPouches} pcs = ₹${f2(c.toyCostPerPouch*c.totalPouches)} total`} val={`₹${f2(c.toyCostPerPouch)}`} color="#166534" />}
         <CRow label="Total cost per pouch" val={`₹${f2(c.totalCostPerPouch)}`} bold bg="#fff9f0" topBdr />
         <CRow label={`${c.totalPouches} pouches × ₹${f2(c.totalCostPerPouch)}`} val={`₹${f2(c.pouchCost)}`} />
         <CRow label="Packaging (carton/bags/bori)" val={`₹${f2(c.packCost)}`} />
