@@ -834,7 +834,6 @@ function VarForm({v:vt,productId,productName,onDone}) {
 
   const totalPouches = pt==='box'?num(ctPk):num(pbPk)*num(mbCt);
 
-  // Laminate calculator constants & computation
   const MATS_DB = {
     pet:     {label:'PET (Polyester)',       density:1.390},
     metpet:  {label:'MET PET (Metallised)',  density:1.390},
@@ -845,19 +844,17 @@ function VarForm({v:vt,productId,productName,onDone}) {
   };
   const updMic=(i,v)=>setLcMics(prev=>{const a=[...prev];a[i]=v;return a;});
   const updMat=(i,v)=>setLcMats(prev=>{const a=[...prev];a[i]=v;return a;});
-
   const lcCalc=(()=>{
     const w=num(lcW),h=num(lcH);
     if(!w||!h) return null;
     let layerGSM=0;
     for(let i=0;i<lcLayers;i++) layerGSM+=num(lcMics[i])*(MATS_DB[lcMats[i]]?.density||1.39);
     const bonds=lcLayers-1;
-    const adhesiveGSM=bonds*2, inkGSM=2;
-    const compositeGSM=layerGSM+adhesiveGSM+inkGSM;
+    const compositeGSM=layerGSM+bonds*2+2;
     const areaM2=(w/1000)*(h/1000);
     const pouchWeightG=compositeGSM*areaM2;
     const pouchesPerKg=pouchWeightG>0?Math.round(1000/pouchWeightG):0;
-    return {compositeGSM,pouchWeightG,pouchesPerKg,layerGSM,adhesiveGSM,inkGSM};
+    return {compositeGSM,pouchWeightG,pouchesPerKg};
   })();
 
   const save = async()=>{
@@ -910,21 +907,16 @@ function VarForm({v:vt,productId,productName,onDone}) {
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>Pouches per kg</label>
               <button onClick={()=>setShowLamCalc(s=>!s)} style={{fontSize:'10px',fontWeight:'700',background:showLamCalc?'#e8851b':'#f3f4f6',color:showLamCalc?'#fff':'#e8851b',border:'none',borderRadius:'5px',padding:'2px 7px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
-                🧮 {showLamCalc?'Hide Calc':'Calculate'}
+                🧮 {showLamCalc?'Hide':'Calculate'}
               </button>
             </div>
-            <input type="number" value={lamPk} onChange={e=>setLamPk(e.target.value)}
-              placeholder="e.g. 480"
+            <input type="number" value={lamPk} onChange={e=>setLamPk(e.target.value)} placeholder="e.g. 480"
               style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',width:'100%',background:'#fff'}} />
           </div>
         </Row2>
-
-        {/* ── Laminate Structure Calculator ── */}
         {showLamCalc&&(
           <div style={{background:'#1c1c2e',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
             <div style={{fontSize:'11px',fontWeight:'800',color:'#a78bfa',letterSpacing:'1px',textTransform:'uppercase'}}>🧮 Structure Calculator</div>
-
-            {/* Pouch dimensions */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
               <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
                 <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase'}}>Width (mm)</label>
@@ -937,79 +929,50 @@ function VarForm({v:vt,productId,productName,onDone}) {
                   style={{border:'1px solid #374151',borderRadius:'6px',padding:'7px 10px',fontSize:'13px',background:'#2d2d44',color:'#f3f4f6',fontFamily:'JetBrains Mono,monospace'}} />
               </div>
             </div>
-
-            {/* Layer count selector */}
             <div>
               <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase',display:'block',marginBottom:'5px'}}>Number of Layers</label>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'5px'}}>
                 {[2,3,4].map(n=>(
-                  <button key={n} onClick={()=>setLcLayers(n)}
-                    style={{padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:lcLayers===n?'#a78bfa':'#374151',color:'#fff'}}>
-                    {n}-Layer
-                  </button>
+                  <button key={n} onClick={()=>setLcLayers(n)} style={{padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:lcLayers===n?'#a78bfa':'#374151',color:'#fff'}}>{n}-Layer</button>
                 ))}
               </div>
             </div>
-
-            {/* Layer inputs */}
             <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 70px',gap:'6px'}}>
-                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>Layer</div>
-                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>Material</div>
-                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',textAlign:'center'}}>Micron</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 60px',gap:'6px'}}>
+                {['Layer','Material','μ'].map(h=><div key={h} style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>{h}</div>)}
               </div>
               {Array.from({length:lcLayers},(_,i)=>(
-                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 70px',gap:'6px',alignItems:'center'}}>
-                  <div style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',fontWeight:'600'}}>
-                    {i===0?'Outer (Print)':i===lcLayers-1?'Inner (Seal)':`Layer ${i+1}`}
-                  </div>
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 60px',gap:'6px',alignItems:'center'}}>
+                  <div style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',fontWeight:'600'}}>{i===0?'Outer (Print)':i===lcLayers-1?'Inner (Seal)':`Layer ${i+1}`}</div>
                   <select value={lcMats[i]||'pet'} onChange={e=>updMat(i,e.target.value)}
                     style={{border:'1px solid #374151',borderRadius:'6px',padding:'5px 6px',fontSize:'11px',background:'#2d2d44',color:'#f3f4f6'}}>
                     {Object.entries(MATS_DB).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                   </select>
-                  <input type="number" value={lcMics[i]||''} onChange={e=>updMic(i,e.target.value)}
-                    placeholder="μ"
+                  <input type="number" value={lcMics[i]||''} onChange={e=>updMic(i,e.target.value)} placeholder="μ"
                     style={{border:'1px solid #374151',borderRadius:'6px',padding:'5px 8px',fontSize:'12px',background:'#2d2d44',color:'#f3f4f6',fontFamily:'JetBrains Mono,monospace',textAlign:'center',width:'100%'}} />
                 </div>
               ))}
             </div>
-
-            {/* Fixed values note */}
-            <div style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',borderTop:'1px solid #374151',paddingTop:'7px'}}>
-              Fixed: Adhesive {(lcLayers-1)*2} GSM ({lcLayers-1} bonds × 2 GSM) · Ink 2 GSM
-            </div>
-
-            {/* Results */}
+            <div style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',borderTop:'1px solid #374151',paddingTop:'7px'}}>Fixed: Adhesive {(lcLayers-1)*2} GSM · Ink 2 GSM</div>
             {lcCalc&&lcCalc.pouchesPerKg>0&&(
               <div style={{background:'#2d2d44',borderRadius:'8px',padding:'10px'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',textAlign:'center',marginBottom:'10px'}}>
-                  {[
-                    {l:'Composite GSM',v:`${f2(lcCalc.compositeGSM)}`},
-                    {l:'Pouch Weight',v:`${f2(lcCalc.pouchWeightG)}g`},
-                    {l:'Pouches / kg',v:`${lcCalc.pouchesPerKg}`},
-                  ].map(x=>(
+                  {[{l:'Composite GSM',v:`${f2(lcCalc.compositeGSM)}`},{l:'Pouch Weight',v:`${f2(lcCalc.pouchWeightG)}g`},{l:'Pouches/kg',v:`${lcCalc.pouchesPerKg}`}].map(x=>(
                     <div key={x.l}>
                       <div style={{fontSize:'9px',color:'rgba(255,255,255,0.5)',marginBottom:'2px',textTransform:'uppercase'}}>{x.l}</div>
                       <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'14px',color:'#a78bfa'}}>{x.v}</div>
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={()=>{setLamPk(String(lcCalc.pouchesPerKg));setShowLamCalc(false);}}
+                <button onClick={()=>{setLamPk(String(lcCalc.pouchesPerKg));setShowLamCalc(false);}}
                   style={{width:'100%',background:'#a78bfa',color:'#fff',border:'none',borderRadius:'7px',padding:'9px',fontWeight:'800',fontSize:'13px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
                   ✓ Use {lcCalc.pouchesPerKg} pouches/kg
                 </button>
               </div>
             )}
-            {(!lcCalc||lcCalc.pouchesPerKg===0)&&lcW&&lcH&&(
-              <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Enter micron values for all layers to calculate</div>
-            )}
-            {(!lcW||!lcH)&&(
-              <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Enter pouch width and height to calculate</div>
-            )}
+            {(!lcW||!lcH)&&<div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Enter width and height to calculate</div>}
           </div>
         )}
-
         {lamRt&&lamPk&&<InfoBox color="orange">Cost/pouch: ₹{f2(lamRt/lamPk)} · Tax input: ₹{f2((lamRt*0.18)/lamPk)}/pouch</InfoBox>}
       </div>
 
@@ -1064,7 +1027,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
             <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
               <label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>Total Toy Cost / Unit</label>
               <div style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',background:'#f9fafb',fontFamily:'JetBrains Mono,monospace',fontWeight:'700',color:'#166534'}}>
-                {toy ? `₹${(num(toy) * (pt==='box'?num(ctPk):num(pbPk)*num(mbCt))).toFixed(2)}` : '—'}
+                {toy?`₹${(num(toy)*(pt==='box'?num(ctPk):num(pbPk)*num(mbCt))).toFixed(2)}`:'—'}
               </div>
             </div>
           </Row2>
@@ -1195,11 +1158,14 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
   const [pForm,setPForm]=useState(false);
   const [vForm,setVForm]=useState(false);
   const [editV,setEditV]=useState(null);
-  const [expV,setExpV]=useState(null);
+  const [selVId,setSelVId]=useState(null);
 
   const current = prod;
   const pc = calcProduct(current,rms,subs);
   const myVars = variants.filter(v=>v.productId===current.id);
+  const selV = myVars.find(v=>v.id===selVId) || myVars[0] || null;
+
+  const HEADER_H = 56;
 
   const delProd = async()=>{
     if(!confirm(`Delete "${current.name}" and ALL ${myVars.length} variants? Cannot be undone.`)) return;
@@ -1210,84 +1176,134 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
   const delVar = async v=>{
     if(!confirm(`Delete this ₹${v.mrp} ${v.packingType} variant?`)) return;
     await db.collection(C.VAR).doc(v.id).delete();
+    if(selVId===v.id) setSelVId(null);
   };
 
   return (
-    <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'14px'}}>
-      <div style={{background:'linear-gradient(135deg,#e8851b,#f59e0b)',borderRadius:'14px',padding:'14px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div>
-            <div style={{fontWeight:'800',fontSize:'18px',color:'#fff'}}>{current.name}</div>
+    <div style={{display:'flex',flexDirection:'column',height:`calc(100vh - ${HEADER_H}px)`,overflow:'hidden'}}>
+
+      {/* Top bar */}
+      <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 16px',borderBottom:'1px solid #f3f4f6',background:'#fff',flexShrink:0}}>
+        <button onClick={onBack} style={{background:'#f3f4f6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:'Sora,sans-serif',color:'#374151',whiteSpace:'nowrap'}}>← Back</button>
+        <div style={{fontWeight:'800',fontSize:'15px',flex:1}}>{current.name}</div>
+        <button onClick={()=>setPForm(true)} style={{background:'#fff4e6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#e8851b',whiteSpace:'nowrap'}}>✏️ Edit</button>
+        <button onClick={delProd} style={{background:'#fee2e2',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#dc2626',whiteSpace:'nowrap'}}>🗑 Delete</button>
+      </div>
+
+      {/* Two-panel layout */}
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+
+        {/* LEFT — 40% — Product header + BOM + Variant cards */}
+        <div style={{width:'40%',display:'flex',flexDirection:'column',borderRight:'2px solid #e5e7eb',overflowY:'auto',background:'#fff'}}>
+
+          {/* Product header */}
+          <div style={{background:'linear-gradient(135deg,#e8851b,#f59e0b)',padding:'14px',flexShrink:0}}>
+            <div style={{fontWeight:'800',fontSize:'16px',color:'#fff'}}>{current.name}</div>
             <div style={{fontSize:'11px',color:'rgba(255,255,255,0.8)',marginTop:'2px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{current.category} · 5% GST</div>
-          </div>
-          <Btn sm v="ghost" onClick={()=>setPForm(true)} style={{color:'#fff',background:'rgba(255,255,255,0.2)'}}>✏️ Edit</Btn>
-        </div>
-        {pc&&(
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginTop:'12px'}}>
-            {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Cost/kg',v:`₹${f2(pc.namkeenCostPerKg)}`},{l:'BOM Items',v:(current.bom||[]).length}].map(x=>(
-              <div key={x.l} style={{background:'rgba(255,255,255,0.2)',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
-                <div style={{fontSize:'10px',color:'rgba(255,255,255,0.7)'}}>{x.l}</div>
-                <div style={{fontWeight:'800',color:'#fff',fontFamily:'JetBrains Mono,monospace',fontSize:'13px'}}>{x.v}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* BOM Summary */}
-      {pc&&(
-        <div>
-          <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px'}}>BOM — Batch ({current.batchOutputKg} kg output)</div>
-          <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-            {pc.bomRows.map((item,i)=>(
-              <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px 70px',padding:'8px 12px',borderTop:i>0?'1px solid #f3f4f6':'none',background:i%2===0?'#fff':'#fafafa'}}>
-                <div>
-                  <span style={{fontWeight:'600',fontSize:'12px'}}>{item.refName}</span>
-                  <span style={{marginLeft:'5px',fontSize:'9px',padding:'1px 5px',borderRadius:'10px',background:item.type==='sub'?'#f3e8ff':'#e0f2fe',color:item.type==='sub'?'#7c3aed':'#0369a1'}}>{item.type==='sub'?'PROC':'RAW'}</span>
-                </div>
-                <div style={{textAlign:'right',fontSize:'12px',color:'#6b7280',fontFamily:'JetBrains Mono,monospace'}}>{item.qtyKg}kg</div>
-                <div style={{textAlign:'right',fontWeight:'700',fontSize:'12px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(item.cost)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Variants */}
-      <div>
-        <SecHdr title={`Pack Variants (${myVars.length})`} action={<Btn sm onClick={()=>{setEditV(null);setVForm(true);}}>+ Add Variant</Btn>} />
-        {myVars.length===0?<Empty icon="📦" text="No variants yet. Add a box or bag variant." />:myVars.map(v=>{
-          const vc=pc?calcVariant(v,pc,oh):null;
-          const exp=expV===v.id;
-          return (
-            <Card key={v.id} style={{marginBottom:'8px',border:vc?`1.5px solid ${mBdr(vc.markupPct)}`:undefined}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setExpV(exp?null:v.id)}>
-                <div>
-                  <div style={{fontWeight:'800',fontSize:'14px'}}>₹{v.mrp} MRP · {v.packingType==='box'?'📦':'👜'} {v.packingType}</div>
-                  <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>
-                    {vc?`${vc.totalPouches} pcs · SP ₹${vc.effectiveSP} · Net Cost ₹${f2(vc.netCost)}`:v.fillWeightG+'g fill'}
+            {pc&&(
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginTop:'10px'}}>
+                {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Cost/kg',v:`₹${f2(pc.namkeenCostPerKg)}`},{l:'BOM Items',v:(current.bom||[]).length}].map(x=>(
+                  <div key={x.l} style={{background:'rgba(255,255,255,0.2)',borderRadius:'8px',padding:'7px',textAlign:'center'}}>
+                    <div style={{fontSize:'10px',color:'rgba(255,255,255,0.7)'}}>{x.l}</div>
+                    <div style={{fontWeight:'800',color:'#fff',fontFamily:'JetBrains Mono,monospace',fontSize:'12px'}}>{x.v}</div>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* BOM table */}
+          {pc&&(
+            <div style={{padding:'12px 12px 8px',flexShrink:0}}>
+              <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'7px'}}>
+                BOM — {current.batchOutputKg} kg batch
+              </div>
+              <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 50px 62px',background:'#1c1c2e',padding:'6px 10px',gap:'4px'}}>
+                  {['Ingredient','Qty','Cost'].map(h=>(
+                    <div key={h} style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.7)',textAlign:h==='Ingredient'?'left':'right'}}>{h}</div>
+                  ))}
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                  {vc&&<MBadge pct={vc.markupPct} />}
-                  <span style={{color:'#9ca3af',fontSize:'16px'}}>{exp?'▲':'▼'}</span>
+                {pc.bomRows.map((item,i)=>(
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 50px 62px',padding:'6px 10px',borderTop:'1px solid #f3f4f6',background:i%2===0?'#fff':'#fafafa',gap:'4px',alignItems:'center'}}>
+                    <div>
+                      <span style={{fontWeight:'600',fontSize:'11px'}}>{item.refName}</span>
+                      <span style={{marginLeft:'4px',fontSize:'9px',padding:'1px 4px',borderRadius:'8px',background:item.type==='sub'?'#f3e8ff':'#e0f2fe',color:item.type==='sub'?'#7c3aed':'#0369a1'}}>{item.type==='sub'?'PROC':'RAW'}</span>
+                    </div>
+                    <div style={{textAlign:'right',fontSize:'11px',color:'#6b7280',fontFamily:'JetBrains Mono,monospace'}}>{item.qtyKg}kg</div>
+                    <div style={{textAlign:'right',fontWeight:'700',fontSize:'11px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(item.cost)}</div>
+                  </div>
+                ))}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 62px',padding:'7px 10px',background:'#fff4e6',borderTop:'2px solid #e8851b',gap:'4px'}}>
+                  <div style={{fontWeight:'700',fontSize:'11px',color:'#c2610a'}}>Total Batch Cost</div>
+                  <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'800',color:'#c2610a',fontSize:'12px'}}>₹{f2(pc.bomCost)}</div>
                 </div>
               </div>
-              {exp&&pc&&(
-                <div style={{marginTop:'14px',borderTop:'1px solid #f3f4f6',paddingTop:'14px'}}>
-                  <VarDetail variant={v} pc={pc} oh={oh} />
-                  <div style={{display:'flex',gap:'6px',marginTop:'10px'}}>
-                    <Btn sm v="secondary" onClick={()=>{setEditV(v);setVForm(true);}} style={{flex:1}}>✏️ Edit Variant</Btn>
-                    <Btn sm v="danger" onClick={()=>delVar(v)}>🗑</Btn>
-                  </div>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
+            </div>
+          )}
 
-      <Btn v="danger" onClick={delProd} full sm>🗑 Delete Product &amp; All Variants</Btn>
+          {/* Variant cards - clickable */}
+          <div style={{padding:'0 12px 12px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'7px'}}>
+              <div style={{fontSize:'10px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
+                Pack Variants ({myVars.length})
+              </div>
+              <button onClick={()=>{setEditV(null);setVForm(true);}}
+                style={{background:'#e8851b',color:'#fff',border:'none',borderRadius:'7px',padding:'5px 10px',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif'}}>
+                + Add Variant
+              </button>
+            </div>
+            {myVars.length===0?(
+              <div style={{textAlign:'center',padding:'24px 12px',color:'#9ca3af',fontSize:'12px'}}>No variants yet. Add one →</div>
+            ):myVars.map(v=>{
+              const vc=pc?calcVariant(v,pc,oh):null;
+              const isSel=selV?.id===v.id;
+              return (
+                <div key={v.id} onClick={()=>setSelVId(v.id)}
+                  style={{borderRadius:'10px',padding:'9px 11px',marginBottom:'7px',cursor:'pointer',
+                    border:isSel?'2px solid #e8851b':'2px solid #f3f4f6',
+                    background:isSel?'#fff9f0':'#fafafa',transition:'all 0.15s'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <div>
+                      <span style={{fontWeight:'800',fontSize:'13px'}}>₹{v.mrp}</span>
+                      <span style={{marginLeft:'5px',fontSize:'13px'}}>{v.packingType==='box'?'📦':'👜'}</span>
+                      <span style={{marginLeft:'4px',fontSize:'11px',color:'#9ca3af'}}>{v.packingType} · {v.fillWeightG}g</span>
+                    </div>
+                    {vc&&<div style={{background:mBg(vc.markupPct),color:mCol(vc.markupPct),border:`1.5px solid ${mBdr(vc.markupPct)}`,borderRadius:'20px',padding:'2px 9px',fontSize:'12px',fontWeight:'800',fontFamily:'JetBrains Mono,monospace'}}>{f1(vc.markupPct)}%</div>}
+                  </div>
+                  {vc&&<div style={{fontSize:'10px',color:'#9ca3af',marginTop:'3px'}}>SP ₹{vc.effectiveSP} · Cost ₹{f2(vc.netCost)} · Profit ₹{f2(vc.profit)}</div>}
+                  {isSel&&<div style={{fontSize:'10px',color:'#e8851b',fontWeight:'700',marginTop:'3px'}}>▶ Detail shown on right</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT — 60% — Variant cost detail */}
+        <div style={{width:'60%',overflowY:'auto',background:'#f8f4ef',padding:'14px 16px',display:'flex',flexDirection:'column',gap:'12px'}}>
+          {selV&&pc ? (
+            <>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:'800',fontSize:'16px'}}>₹{selV.mrp} MRP · {selV.packingType==='box'?'📦 Box':'👜 Bag/Bori'}</div>
+                  <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>Fill {selV.fillWeightG}g · {selV.laminate?.sizeDesc||'—'}</div>
+                </div>
+                <div style={{display:'flex',gap:'6px'}}>
+                  <button onClick={()=>{setEditV(selV);setVForm(true);}} style={{background:'#fff4e6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#e8851b'}}>✏️ Edit</button>
+                  <button onClick={()=>delVar(selV)} style={{background:'#fee2e2',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#dc2626'}}>🗑</button>
+                </div>
+              </div>
+              <VarDetail variant={selV} pc={pc} oh={oh} />
+            </>
+          ):(
+            <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'12px',color:'#9ca3af',minHeight:'300px'}}>
+              <div style={{fontSize:'48px'}}>📦</div>
+              <div style={{fontWeight:'700',fontSize:'15px',color:'#374151'}}>Select a variant</div>
+              <div style={{fontSize:'13px',textAlign:'center',lineHeight:'1.6'}}>Click any variant card on the left<br/>to see its full cost breakdown here.</div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {pForm&&<Modal title="Edit Product" onClose={()=>setPForm(false)}><ProdForm prod={current} rms={rms} subs={subs} onDone={()=>setPForm(false)} /></Modal>}
       {vForm&&<Modal title={editV?'Edit Variant':'Add Pack Variant'} onClose={()=>setVForm(false)}><VarForm v={editV} productId={current.id} productName={current.name} onDone={()=>setVForm(false)} /></Modal>}
@@ -1295,9 +1311,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PRODUCTS LIST
-// ═══════════════════════════════════════════════════════════════════════════
+
 function Products({products,variants,rms,subs,oh}) {
   const [q,setQ]=useState('');
   const [cat,setCat]=useState('all');
