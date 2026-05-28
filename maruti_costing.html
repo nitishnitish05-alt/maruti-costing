@@ -185,7 +185,7 @@ function calcProduct(product, rms, subs) {
   return { bomRows, bomCost, bomTax, namkeenCostPerKg:bomCost/out, namkeenTaxPerKg:bomTax/out };
 }
 
-function calcVariant(variant, pc, oh) {
+function calcVariant(variant, pc, oh, freightOverride=null, schemeAdd=0) {
   if (!variant||!pc) return null;
   const totalOH = num(oh.labourPerKg)+num(oh.boilerFuelPerKg)+num(oh.electricityPerKg)+num(oh.indirectPerKg);
   const totalCostPerKg = pc.namkeenCostPerKg + totalOH;
@@ -216,13 +216,13 @@ function calcVariant(variant, pc, oh) {
   }
 
   const pouchCost  = totalCostPerPouch * totalPouches;
-  const freight    = num(variant.freightLocal)||40;
+  const freight    = freightOverride!==null ? num(freightOverride) : (num(variant.freightLocal)||40);
   const preTaxCost = pouchCost + packCost + freight;
   const inputTax   = totalTaxPerPouch*totalPouches + packTax;
   const outputTax  = preTaxCost * 0.05;
   const netGST     = outputTax - inputTax;
   const netCost    = preTaxCost + netGST;
-  const effectiveSP = num(variant.sellingPricePerUnit) - num(variant.scheme);
+  const effectiveSP = num(variant.sellingPricePerUnit) - num(variant.scheme) - num(schemeAdd);
   const profit      = effectiveSP - netCost;
   const markupPct   = netCost>0 ? (profit/netCost)*100 : 0;
   const grossPct    = effectiveSP>0 ? (profit/effectiveSP)*100 : 0;
@@ -232,7 +232,8 @@ function calcVariant(variant, pc, oh) {
     totalPouches, packCost, packTax, pouchCost, preTaxCost,
     inputTax, outputTax, netGST, netCost,
     effectiveSP, profit, markupPct, grossPct,
-    costPerPouch: totalPouches>0 ? netCost/totalPouches : 0
+    costPerPouch: totalPouches>0 ? netCost/totalPouches : 0,
+    freight
   };
 }
 
@@ -1159,6 +1160,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
   const [vForm,setVForm]=useState(false);
   const [editV,setEditV]=useState(null);
   const [selVId,setSelVId]=useState(null);
+  const [freightView,setFreightView]=useState('local');
 
   const current = prod;
   const pc = calcProduct(current,rms,subs);
@@ -1364,7 +1366,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
         <div style={{width:'60%',overflowY:'auto',background:cream,padding:'20px 24px',display:'flex',flexDirection:'column',gap:'14px'}}>
 
           {selV&&pc ? (()=>{
-            const c2 = calcVariant(selV,pc,oh);
+            const c2 = calcVariant(selV,pc,oh,freightView==='outstation'?(selV.freightOutstation||60):null);
             if(!c2) return null;
 
             const CRow = ({label,val,note,bold,color,topBdr,bg}) => (
@@ -1392,11 +1394,25 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
                   display:'flex',justifyContent:'space-between',alignItems:'flex-start'
                 }}>
                   <div>
+                    <div>
                     <div style={{fontWeight:'800',fontSize:'17px',color:text1}}>
                       ₹{selV.mrp} MRP &nbsp;·&nbsp; {selV.packingType==='box'?'📦 Box':'👜 Bag / Bori'}
                     </div>
                     <div style={{fontSize:'12px',color:text2,marginTop:'4px'}}>
                       Fill {selV.fillWeightG}g &nbsp;·&nbsp; {selV.laminate?.sizeDesc||'—'} &nbsp;·&nbsp; {c2.totalPouches} pouches/unit
+                    </div>
+                    {/* Local / Outstation toggle */}
+                    <div style={{display:'flex',gap:'5px',marginTop:'8px'}}>
+                      {[{id:'local',label:`📍 Local ₹${selV.freightLocal||40}`},{id:'outstation',label:`✈️ Outstation ₹${selV.freightOutstation||60}`}].map(t=>(
+                        <button key={t.id} onClick={()=>setFreightView(t.id)}
+                          style={{padding:'4px 10px',borderRadius:'6px',border:'none',cursor:'pointer',
+                            fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',
+                            background:freightView===t.id?orange:cream2,
+                            color:freightView===t.id?'#fff':text2,
+                            border:freightView===t.id?'none':`1px solid ${border}`}}>
+                          {t.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <div style={{display:'flex',gap:'6px'}}>
@@ -1454,7 +1470,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
                   <div style={{borderRadius:'12px',overflow:'hidden',border:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
                     <CRow label={`${c2.totalPouches} pouches × ₹${f2(c2.totalCostPerPouch)}`} val={`₹${f2(c2.pouchCost)}`} />
                     <CRow label={`Packaging (${selV.packingType==='box'?selV.carton?.type||'carton':'LDPE bags + bori'})`} val={`₹${f2(c2.packCost)}`} />
-                    <CRow label="Freight (local)" val={`₹${selV.freightLocal||40}`} />
+                    <CRow label={`Freight (${freightView==='local'?'local':'outstation'})`} val={`₹${c2.freight}`} />
                     <CRow label="Sub-total (pre-GST)" val={`₹${f2(c2.preTaxCost)}`} bold />
                     <CRow label="+ Output GST 5%" val={`+₹${f2(c2.outputTax)}`} color="#c0392b" />
                     <CRow label="− Input Tax Credits"
@@ -1579,8 +1595,10 @@ function Products({products,variants,rms,subs,oh}) {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
 function Dashboard({products,variants,rms,subs,oh,onGo}) {
-  const [whatIf, setWhatIf] = useState({});
-  const [rmSearch, setRmSearch] = useState('');
+  const [whatIf,setWhatIf]             = useState({});
+  const [rmSearch,setRmSearch]         = useState('');
+  const [schemeAmt,setSchemeAmt]       = useState('');
+  const [selProds,setSelProds]         = useState(new Set());
 
   const varByProd = useMemo(()=>{
     const m={};
@@ -1589,254 +1607,228 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
   },[variants]);
 
   const simRms = useMemo(()=>
-    rms.map(r=> whatIf[r.id]!==undefined && whatIf[r.id]!=='' ? {...r, currentRate:num(whatIf[r.id])} : r),
-    [rms, whatIf]);
+    rms.map(r=>whatIf[r.id]!==undefined&&whatIf[r.id]!==''?{...r,currentRate:num(whatIf[r.id])}:r),
+    [rms,whatIf]);
 
-  const hasAnyWhatIf = Object.values(whatIf).some(v=>v!=='');
-
-  const rows = useMemo(()=>
-    products.map(p=>{
-      const pcBase = calcProduct(p, rms, subs);
-      const pcSim  = calcProduct(p, simRms, subs);
-      const pvs = varByProd[p.id]||[];
-      const varRows = pvs.map(v=>({
-        v,
-        vcBase: calcVariant(v, pcBase, oh),
-        vcSim:  calcVariant(v, pcSim,  oh),
-      }));
-      return {p, pcBase, varRows};
-    }),
-  [products, rms, simRms, subs, oh, varByProd]);
-
+  const hasWhatIf = Object.values(whatIf).some(v=>v!=='');
+  const hasScheme = num(schemeAmt)>0 && selProds.size>0;
   const filteredRms = rms.filter(r=>r.name.toLowerCase().includes(rmSearch.toLowerCase()));
-  const resetAll = ()=>setWhatIf({});
-  const changedCount = Object.values(whatIf).filter(v=>v!=='').length;
+  const resetAll    = ()=>{ setWhatIf({}); };
+  const changedCount= Object.values(whatIf).filter(v=>v!=='').length;
+
+  // Scheme helpers
+  const toggleProd = id => setSelProds(prev=>{ const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s; });
+  const selectAll  = () => setSelProds(new Set(products.map(p=>p.id)));
+  const clearSel   = () => setSelProds(new Set());
+
+  // Compute all rows
+  const rows = useMemo(()=>products.map(p=>{
+    const pcBase = calcProduct(p,rms,subs);
+    const pcSim  = calcProduct(p,simRms,subs);
+    const pvs    = varByProd[p.id]||[];
+    const extra  = selProds.has(p.id) ? num(schemeAmt) : 0;
+    const varRows= pvs.map(v=>({
+      v,
+      cL:  calcVariant(v,pcBase,oh,null,0),
+      cO:  calcVariant(v,pcBase,oh,v.freightOutstation||60,0),
+      wL:  calcVariant(v,pcSim, oh,null,extra),
+      wO:  calcVariant(v,pcSim, oh,v.freightOutstation||60,extra),
+    }));
+    return {p,pcBase,varRows};
+  }),[products,rms,simRms,subs,oh,varByProd,selProds,schemeAmt]);
+
+  const wiActive = hasWhatIf||hasScheme;
 
   if(products.length===0) return (
     <div style={{padding:'40px',textAlign:'center'}}>
       <div style={{fontSize:'48px',marginBottom:'16px'}}>🏭</div>
       <div style={{fontWeight:'700',fontSize:'16px',color:'#374151'}}>No products yet.</div>
-      <div style={{color:'#9ca3af',marginTop:'8px'}}>Add Raw Materials → Sub-Recipes → Products to get started.</div>
     </div>
   );
 
-  // ── PANEL STYLES ──
-  const HEADER_H = 56; // px — top header bar height
-  const panelH = `calc(100vh - ${HEADER_H}px)`;
+  const GCOL = '#065f46'; const GBG = '#d1fae5'; // Current = green
+  const PCOL = '#5b21b6'; const PBG = '#ede9fe'; // WI      = purple
+  const COLS  = '2.2fr 0.65fr 0.65fr 0.65fr 0.65fr 0.6fr 0.6fr 0.6fr 0.6fr';
 
   return (
-    <div style={{display:'flex', width:'100%', height:panelH, overflow:'hidden'}}>
+    <div style={{display:'flex',width:'100%',height:'calc(100vh - 56px)',overflow:'hidden'}}>
 
-      {/* ══════════════════════════════════════════
-          SEGMENT 1 — 60% — Product Margin Table
-      ══════════════════════════════════════════ */}
-      <div style={{width:'60%', display:'flex', flexDirection:'column', borderRight:'2px solid #e5e7eb'}}>
+      {/* ══════ SEGMENT 1 — 60% — Product Margins ══════ */}
+      <div style={{width:'60%',display:'flex',flexDirection:'column',borderRight:'2px solid #e5e7eb'}}>
 
-        {/* S1 Header */}
-        <div style={{padding:'10px 14px', borderBottom:'1px solid #e5e7eb', background:'#fff', flexShrink:0, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-          <div>
+        {/* S1 header */}
+        <div style={{padding:'8px 14px',borderBottom:'1px solid #e5e7eb',background:'#fff',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
             <div style={{fontSize:'11px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
-              📊 Product Margins
+              📊 Product Margins {wiActive&&<span style={{color:PCOL,marginLeft:'8px'}}>· Simulation Active</span>}
             </div>
-            <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>
-              {rows.length} products · {rows.reduce((s,r)=>s+r.varRows.length,0)} variants
-              {hasAnyWhatIf && <span style={{color:'#a78bfa',fontWeight:'700',marginLeft:'8px'}}>· What-If Active ({changedCount} changed)</span>}
-            </div>
+            <div style={{fontSize:'11px',color:'#9ca3af'}}>{rows.length} products · {rows.reduce((s,r)=>s+r.varRows.length,0)} variants</div>
+          </div>
+
+          {/* Scheme Simulator bar */}
+          <div style={{display:'flex',alignItems:'center',gap:'8px',background:'#f9fafb',borderRadius:'8px',padding:'7px 10px',flexWrap:'wrap'}}>
+            <span style={{fontSize:'11px',fontWeight:'700',color:'#6b7280',whiteSpace:'nowrap'}}>💰 Scheme ₹/unit:</span>
+            <input type="number" value={schemeAmt} onChange={e=>setSchemeAmt(e.target.value)} placeholder="0"
+              style={{width:'70px',border:'1.5px solid #e5e7eb',borderRadius:'6px',padding:'4px 8px',fontSize:'13px',fontFamily:'JetBrains Mono,monospace',background:'#fff'}} />
+            <button onClick={selectAll} style={{background:'#e8851b',color:'#fff',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Select All</button>
+            <button onClick={clearSel} style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Clear</button>
+            {selProds.size>0&&<span style={{fontSize:'11px',color:'#e8851b',fontWeight:'700'}}>{selProds.size} product{selProds.size>1?'s':''} selected</span>}
+            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',color:'#dc2626',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif',marginLeft:'auto'}}>Reset RM ({changedCount})</button>}
           </div>
         </div>
 
-        {/* S1 Table Header — sticky */}
-        <div style={{
-          display:'grid', gridTemplateColumns:'1.8fr 0.6fr 0.8fr 0.8fr 0.8fr 0.8fr',
-          padding:'7px 14px', gap:'6px', background:'#1c1c2e', flexShrink:0
-        }}>
+        {/* Column header */}
+        <div style={{display:'grid',gridTemplateColumns:COLS,background:'#1c1c2e',padding:'6px 10px',gap:'3px',flexShrink:0}}>
+          <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.65)'}}>Product / Variant</div>
           {[
-            {l:'Product / Variant', a:'left'},
-            {l:'Fill', a:'center'},
-            {l:'Cur %', a:'center', purple:true},
-            {l:'WI %', a:'center', purple:true},
-            {l:'Cur ₹', a:'center', purple:true},
-            {l:'WI ₹', a:'center', purple:true},
+            {l:'%L',bg:GBG,cl:GCOL},{l:'%O',bg:GBG,cl:GCOL},
+            {l:'WI%L',bg:PBG,cl:PCOL},{l:'WI%O',bg:PBG,cl:PCOL},
+            {l:'₹L',bg:GBG,cl:GCOL},{l:'₹O',bg:GBG,cl:GCOL},
+            {l:'WI₹L',bg:PBG,cl:PCOL},{l:'WI₹O',bg:PBG,cl:PCOL},
           ].map(h=>(
-            <div key={h.l} style={{fontSize:'10px',fontWeight:'700',textAlign:h.a,color:h.purple?'#a78bfa':'rgba(255,255,255,0.65)'}}>{h.l}</div>
+            <div key={h.l} style={{
+              fontSize:'10px',fontWeight:'800',textAlign:'center',
+              background:h.bg,color:h.cl,borderRadius:'4px',padding:'2px 2px'
+            }}>{h.l}</div>
           ))}
         </div>
 
-        {/* S1 Scrollable body */}
-        <div style={{flex:1, overflowY:'auto'}}>
-          {rows.map(({p, pcBase, varRows}, pi)=>(
+        {/* Table body */}
+        <div style={{flex:1,overflowY:'auto'}}>
+          {rows.map(({p,pcBase,varRows},pi)=>(
             <div key={p.id} style={{borderBottom:'2px solid #f3f4f6'}}>
-              {/* Product name row */}
-              <div
-                onClick={()=>onGo(p)}
-                style={{
-                  padding:'8px 14px', background:'#f8f4ef', cursor:'pointer',
-                  display:'flex', alignItems:'center', gap:'10px',
-                  borderBottom:'1px solid #e5e7eb',
-                  transition:'background 0.15s',
-                }}
+              {/* Product name row with checkbox */}
+              <div onClick={()=>onGo(p)} style={{
+                padding:'7px 10px',background:'#f8f4ef',cursor:'pointer',
+                display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid #e5e7eb',
+              }}
                 onMouseEnter={e=>e.currentTarget.style.background='#fde68a'}
                 onMouseLeave={e=>e.currentTarget.style.background='#f8f4ef'}
               >
+                <div onClick={e=>{e.stopPropagation();toggleProd(p.id);}}
+                  style={{width:'16px',height:'16px',borderRadius:'4px',border:`2px solid ${selProds.has(p.id)?'#e8851b':'#d1d5db'}`,
+                    background:selProds.has(p.id)?'#e8851b':'#fff',cursor:'pointer',flexShrink:0,
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {selProds.has(p.id)&&<span style={{color:'#fff',fontSize:'11px',fontWeight:'900'}}>✓</span>}
+                </div>
                 <span style={{fontWeight:'800',fontSize:'13px',color:'#1c1c1c'}}>{p.name}</span>
                 <span style={{fontSize:'10px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px'}}>{p.category}</span>
-                {pcBase && <span style={{fontSize:'10px',color:'#e8851b',fontFamily:'JetBrains Mono,monospace',marginLeft:'auto'}}>₹{f2(pcBase.namkeenCostPerKg)}/kg namkeen cost</span>}
+                {pcBase&&<span style={{fontSize:'10px',color:'#e8851b',fontFamily:'JetBrains Mono,monospace',marginLeft:'auto'}}>₹{f2(pcBase.namkeenCostPerKg)}/kg</span>}
               </div>
 
               {/* Variant rows */}
-              {varRows.map(({v, vcBase, vcSim}, vi)=>{
-                if(!vcBase) return null;
-                const mDiff  = vcSim ? vcSim.markupPct - vcBase.markupPct : 0;
-                const prDiff = vcSim ? vcSim.profit - vcBase.profit : 0;
-                const wiOn   = hasAnyWhatIf;
+              {varRows.map(({v,cL,cO,wL,wO},vi)=>{
+                if(!cL) return null;
+                const FMT_PCT = (val,ref,active) => {
+                  if(!active||!val) return <span style={{color:'#d1d5db',fontSize:'11px'}}>—</span>;
+                  const diff = val.markupPct - ref.markupPct;
+                  return <div style={{textAlign:'center'}}>
+                    <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'12px',color:mCol(val.markupPct)}}>{f1(val.markupPct)}%</div>
+                    {diff!==0&&<div style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:diff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{diff>0?'▲':'▼'}{Math.abs(f1(diff))}%</div>}
+                  </div>;
+                };
+                const FMT_PFT = (val,ref,active) => {
+                  if(!active||!val) return <span style={{color:'#d1d5db',fontSize:'11px'}}>—</span>;
+                  const diff = val.profit - ref.profit;
+                  return <div style={{textAlign:'center'}}>
+                    <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'11px',fontWeight:'700',color:mCol(val.markupPct)}}>₹{Math.round(val.profit)}</div>
+                    {diff!==0&&<div style={{fontSize:'9px',fontFamily:'JetBrains Mono,monospace',color:diff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{diff>0?'+':''}{Math.round(diff)}</div>}
+                  </div>;
+                };
                 return (
                   <div key={v.id} style={{
-                    display:'grid', gridTemplateColumns:'1.8fr 0.6fr 0.8fr 0.8fr 0.8fr 0.8fr',
-                    padding:'6px 14px', gap:'6px', alignItems:'center',
-                    background: vi%2===0 ? '#fff' : '#fafafa',
-                    borderBottom:'1px solid #f3f4f6',
+                    display:'grid',gridTemplateColumns:COLS,
+                    padding:'6px 10px',gap:'3px',alignItems:'center',
+                    background:vi%2===0?'#fff':'#fafafa',borderBottom:'1px solid #f3f4f6'
                   }}>
-                    {/* Variant label */}
-                    <div style={{display:'flex',alignItems:'center',gap:'6px',paddingLeft:'12px'}}>
-                      <span style={{fontSize:'14px'}}>{v.packingType==='box'?'📦':'👜'}</span>
-                      <span style={{fontWeight:'700',fontSize:'12px',color:'#374151'}}>₹{v.mrp} MRP</span>
-                      <span style={{fontSize:'10px',color:'#9ca3af'}}>{v.packingType}</span>
-                      <span style={{fontSize:'10px',color:'#9ca3af',marginLeft:'4px'}}>{vcBase.totalPouches} pcs</span>
+                    <div style={{paddingLeft:'24px'}}>
+                      <span style={{fontSize:'13px'}}>{v.packingType==='box'?'📦':'👜'}</span>
+                      <span style={{fontWeight:'700',fontSize:'12px',color:'#374151',marginLeft:'5px'}}>₹{v.mrp}</span>
+                      <span style={{fontSize:'10px',color:'#9ca3af',marginLeft:'4px'}}>{v.fillWeightG}g · {cL.totalPouches}pcs</span>
                     </div>
-
-                    {/* Fill wt */}
-                    <div style={{textAlign:'center',fontSize:'11px',color:'#6b7280',fontFamily:'JetBrains Mono,monospace'}}>{v.fillWeightG}g</div>
-
-                    {/* Current margin */}
-                    <div style={{textAlign:'center'}}>
-                      <span style={{
-                        fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'13px',
-                        color:mCol(vcBase.markupPct)
-                      }}>{f1(vcBase.markupPct)}%</span>
-                    </div>
-
-                    {/* WhatIf margin */}
-                    <div style={{textAlign:'center'}}>
-                      {wiOn && vcSim ? (
-                        <div>
-                          <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'13px',color:mCol(vcSim.markupPct)}}>{f1(vcSim.markupPct)}%</div>
-                          {mDiff!==0 && <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:mDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{mDiff>0?'▲':'▼'}{Math.abs(f1(mDiff))}%</div>}
-                        </div>
-                      ) : <span style={{fontSize:'12px',color:'#d1d5db'}}>—</span>}
-                    </div>
-
-                    {/* Current profit */}
-                    <div style={{textAlign:'center'}}>
-                      <span style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'700',color:'#374151'}}>₹{Math.round(vcBase.profit)}</span>
-                    </div>
-
-                    {/* WhatIf profit */}
-                    <div style={{textAlign:'center'}}>
-                      {wiOn && vcSim ? (
-                        <div>
-                          <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'700',color:mCol(vcSim.markupPct)}}>₹{Math.round(vcSim.profit)}</div>
-                          {prDiff!==0 && <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:prDiff>0?'#16a34a':'#dc2626',fontWeight:'700'}}>{prDiff>0?'+':''}{Math.round(prDiff)}</div>}
-                        </div>
-                      ) : <span style={{fontSize:'12px',color:'#d1d5db'}}>—</span>}
-                    </div>
+                    {/* Cur%L */}
+                    <div style={{textAlign:'center',fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'12px',color:mCol(cL.markupPct)}}>{f1(cL.markupPct)}%</div>
+                    {/* Cur%O */}
+                    <div style={{textAlign:'center',fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'12px',color:mCol(cO.markupPct)}}>{f1(cO.markupPct)}%</div>
+                    {/* WI%L */}
+                    <div>{FMT_PCT(wL,cL,wiActive)}</div>
+                    {/* WI%O */}
+                    <div>{FMT_PCT(wO,cO,wiActive)}</div>
+                    {/* Cur₹L */}
+                    <div style={{textAlign:'center',fontFamily:'JetBrains Mono,monospace',fontSize:'11px',fontWeight:'700',color:'#374151'}}>₹{Math.round(cL.profit)}</div>
+                    {/* Cur₹O */}
+                    <div style={{textAlign:'center',fontFamily:'JetBrains Mono,monospace',fontSize:'11px',fontWeight:'700',color:'#374151'}}>₹{Math.round(cO.profit)}</div>
+                    {/* WI₹L */}
+                    <div>{FMT_PFT(wL,cL,wiActive)}</div>
+                    {/* WI₹O */}
+                    <div>{FMT_PFT(wO,cO,wiActive)}</div>
                   </div>
                 );
               })}
             </div>
           ))}
         </div>
+
+        {/* Legend */}
+        <div style={{padding:'6px 14px',background:'#f9fafb',borderTop:'1px solid #e5e7eb',flexShrink:0,display:'flex',gap:'14px',flexWrap:'wrap'}}>
+          {[{bg:GBG,cl:GCOL,l:'Current (L=Local, O=Outstation)'},{bg:PBG,cl:PCOL,l:'What-If (RM changes + Scheme)'}].map(x=>(
+            <div key={x.l} style={{display:'flex',alignItems:'center',gap:'5px'}}>
+              <div style={{width:'12px',height:'12px',borderRadius:'3px',background:x.bg,border:`1px solid ${x.cl}`}}></div>
+              <span style={{fontSize:'10px',color:'#6b7280'}}>{x.l}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          SEGMENT 2 — 40% — Ingredient What-If
-      ══════════════════════════════════════════ */}
-      <div style={{width:'40%', display:'flex', flexDirection:'column', background:'#fafafa'}}>
-
-        {/* S2 Header */}
-        <div style={{padding:'10px 14px', borderBottom:'1px solid #e5e7eb', background:'#fff', flexShrink:0}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px'}}>
+      {/* ══════ SEGMENT 2 — 40% — What-If Ingredients ══════ */}
+      <div style={{width:'40%',display:'flex',flexDirection:'column',background:'#fafafa'}}>
+        <div style={{padding:'10px 14px',borderBottom:'1px solid #e5e7eb',background:'#fff',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
             <div style={{fontSize:'11px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
               🔮 What-If Ingredient Prices
             </div>
-            {hasAnyWhatIf && (
-              <button onClick={resetAll} style={{
-                background:'#fee2e2',border:'none',borderRadius:'7px',
-                padding:'4px 10px',fontSize:'11px',fontWeight:'700',
-                color:'#dc2626',cursor:'pointer',fontFamily:'Sora,sans-serif'
-              }}>Reset All ({changedCount})</button>
-            )}
+            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',border:'none',borderRadius:'7px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',color:'#dc2626',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Reset RM ({changedCount})</button>}
           </div>
-          <input
-            value={rmSearch} onChange={e=>setRmSearch(e.target.value)}
-            placeholder="Search ingredient…"
-            style={{width:'100%',border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'7px 12px',fontSize:'12px',background:'#fff'}}
-          />
-          {!hasAnyWhatIf && (
-            <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'6px',lineHeight:'1.5'}}>
-              Type a new price in <strong>What-If ₹</strong> → Segment 1 updates instantly. Change multiple ingredients at once.
-            </div>
-          )}
+          <input value={rmSearch} onChange={e=>setRmSearch(e.target.value)} placeholder="Search ingredient…"
+            style={{width:'100%',border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'7px 12px',fontSize:'12px'}} />
+          {!hasWhatIf&&<div style={{fontSize:'11px',color:'#9ca3af',marginTop:'5px'}}>Type a new price in <strong>What-If ₹</strong> → Segment 1 updates instantly. Combine with scheme simulator.</div>}
         </div>
-
-        {/* S2 Table header */}
-        <div style={{
-          display:'grid', gridTemplateColumns:'1fr 70px 80px',
-          padding:'7px 14px', gap:'6px', background:'#1c1c2e', flexShrink:0
-        }}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 70px 80px',padding:'6px 14px',gap:'6px',background:'#1c1c2e',flexShrink:0}}>
           {[{l:'Ingredient',a:'left'},{l:'Current ₹',a:'right'},{l:'What-If ₹',a:'right',purple:true}].map(h=>(
             <div key={h.l} style={{fontSize:'10px',fontWeight:'700',textAlign:h.a,color:h.purple?'#a78bfa':'rgba(255,255,255,0.65)'}}>{h.l}</div>
           ))}
         </div>
-
-        {/* S2 Scrollable body */}
-        <div style={{flex:1, overflowY:'auto'}}>
-          {filteredRms.map((rm, i)=>{
-            const wiVal = whatIf[rm.id];
-            const hasWI = wiVal!==undefined && wiVal!=='';
-            const wiNum = hasWI ? num(wiVal) : rm.currentRate;
-            const diff  = wiNum - rm.currentRate;
+        <div style={{flex:1,overflowY:'auto'}}>
+          {filteredRms.map((rm,i)=>{
+            const wiVal=whatIf[rm.id];
+            const hasWI=wiVal!==undefined&&wiVal!=='';
+            const diff=hasWI?num(wiVal)-rm.currentRate:0;
             return (
               <div key={rm.id} style={{
-                display:'grid', gridTemplateColumns:'1fr 70px 80px',
-                padding:'6px 14px', gap:'6px', alignItems:'center',
+                display:'grid',gridTemplateColumns:'1fr 70px 80px',
+                padding:'6px 14px',gap:'6px',alignItems:'center',
                 borderBottom:'1px solid #f3f4f6',
-                background: hasWI ? '#fff9f0' : i%2===0 ? '#fff' : '#fafafa',
-                borderLeft: hasWI ? '3px solid #e8851b' : '3px solid transparent',
+                background:hasWI?'#fff9f0':i%2===0?'#fff':'#fafafa',
+                borderLeft:hasWI?'3px solid #e8851b':'3px solid transparent',
               }}>
                 <div>
-                  <div style={{fontWeight:hasWI?'700':'500', fontSize:'12px', color:'#1c1c1c'}}>{rm.name}</div>
-                  {hasWI && (
-                    <div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:diff>0?'#dc2626':'#16a34a',fontWeight:'700'}}>
-                      {diff>0?'▲':'▼'} {diff>0?'+':''}{f2(diff)} ₹/kg
-                    </div>
-                  )}
+                  <div style={{fontWeight:hasWI?'700':'500',fontSize:'12px',color:'#1c1c1c'}}>{rm.name}</div>
+                  {hasWI&&<div style={{fontSize:'10px',fontFamily:'JetBrains Mono,monospace',color:diff>0?'#dc2626':'#16a34a',fontWeight:'700'}}>{diff>0?'▲':'▼'} {diff>0?'+':''}{f2(diff)} ₹/kg</div>}
                 </div>
-                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'600',color:'#374151'}}>
-                  ₹{rm.currentRate}
-                </div>
+                <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:'600',color:'#374151'}}>₹{rm.currentRate}</div>
                 <div style={{textAlign:'right'}}>
-                  <input
-                    type="number"
-                    value={wiVal ?? ''}
-                    placeholder="—"
+                  <input type="number" value={wiVal??''} placeholder="—"
                     onChange={e=>setWhatIf(prev=>({...prev,[rm.id]:e.target.value}))}
-                    style={{
-                      width:'72px', textAlign:'right',
-                      border:`1.5px solid ${hasWI?'#e8851b':'#e5e7eb'}`,
-                      borderRadius:'6px', padding:'4px 7px',
-                      fontSize:'12px', fontFamily:'JetBrains Mono,monospace',
-                      background: hasWI?'#fff4e6':'#fff',
-                      fontWeight: hasWI?'700':'400',
-                      color: hasWI?(diff>0?'#dc2626':'#16a34a'):'#374151',
-                    }}
-                  />
+                    style={{width:'72px',textAlign:'right',
+                      border:`1.5px solid ${hasWI?'#e8851b':'#e5e7eb'}`,borderRadius:'6px',
+                      padding:'4px 7px',fontSize:'12px',fontFamily:'JetBrains Mono,monospace',
+                      background:hasWI?'#fff4e6':'#fff',
+                      fontWeight:hasWI?'700':'400',
+                      color:hasWI?(diff>0?'#dc2626':'#16a34a'):'#374151'}} />
                 </div>
               </div>
             );
           })}
-          {filteredRms.length===0 && (
-            <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af',fontSize:'13px'}}>No ingredients found</div>
-          )}
         </div>
       </div>
     </div>
