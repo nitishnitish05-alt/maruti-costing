@@ -1046,65 +1046,76 @@ function VarForm({v:vt,productId,productName,onDone}) {
 // ═══════════════════════════════════════════════════════════════════════════
 // VARIANT DETAIL BREAKDOWN
 // ═══════════════════════════════════════════════════════════════════════════
-function VarDetail({variant,pc,oh}) {
-  const c = calcVariant(variant,pc,oh);
+function VarDetail({variant, pc, oh, freightOverride=null}) {
+  const c = calcVariant(variant, pc, oh, freightOverride);
   if(!c) return null;
-  const CRow=({label,val,note,bold,color,topBdr,bg})=>(
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:bg||'transparent',borderTop:topBdr?'2px solid #e8851b':'1px solid #f3f4f6'}}>
+  const border='#e8ddd0',text1='#2c1810',text2='#7a6555',text3='#b09a88',orange='#e8851b';
+  const Row=({label,val,note,bold,color,topBdr})=>(
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+      padding:'9px 14px',background:bold?'#fffbf5':'#fff',
+      borderTop:topBdr?'2px solid #fcd9a8':'1px solid '+border}}>
       <div>
-        <div style={{fontSize:'12px',fontWeight:bold?'700':'400',color:bold?'#1c1c1c':'#374151'}}>{label}</div>
-        {note&&<div style={{fontSize:'10px',color:'#9ca3af',marginTop:'1px'}}>{note}</div>}
+        <div style={{fontSize:'13px',fontWeight:bold?'700':'400',color:bold?text1:text2}}>{label}</div>
+        {note&&<div style={{fontSize:'10px',color:text3,marginTop:'1px'}}>{note}</div>}
       </div>
-      <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'12px',fontWeight:bold?'700':'500',color:color||'#1c1c1c'}}>{val}</div>
+      <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'13px',fontWeight:bold?'700':'500',color:color||text1,whiteSpace:'nowrap'}}>{val}</div>
     </div>
   );
-
   return (
     <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>
-        {[{l:'Fill Wt',v:`${variant.fillWeightG}g`},{l:'Pouches',v:c.totalPouches},{l:'Pack Type',v:variant.packingType}].map(x=>(
-          <div key={x.l} style={{background:'#f9fafb',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
-            <div style={{fontSize:'10px',color:'#9ca3af'}}>{x.l}</div>
-            <div style={{fontWeight:'700',fontSize:'12px'}}>{x.v}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
+        {[{l:'Fill Weight',v:`${variant.fillWeightG}g`},{l:'Pouches / Unit',v:String(c.totalPouches)},{l:'Pack Type',v:variant.packingType}].map(x=>(
+          <div key={x.l} style={{background:'#fff',borderRadius:'10px',padding:'10px',textAlign:'center',border:'1px solid '+border}}>
+            <div style={{fontSize:'10px',color:text3,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>{x.l}</div>
+            <div style={{fontWeight:'700',fontSize:'14px',color:text1}}>{x.v}</div>
           </div>
         ))}
       </div>
-      <div style={{borderRadius:'10px',overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-        <CRow label="Namkeen cost/pouch" note={`${variant.fillWeightG}g × ₹${f2(c.totalCostPerKg)}/kg (incl overhead ₹${f2(c.totalOH)}/kg)`} val={`₹${f2(c.nmCostPerPouch)}`} />
-        <CRow label="Laminate cost/pouch" note={`₹${variant.laminate?.ratePerKg}/kg ÷ ${variant.laminate?.pouchesPerKg} pcs`} val={`₹${f2(c.lamCostPerPouch)}`} />
-        {c.toyCostPerPouch>0 && <CRow label="Toy / Insert cost/pouch" note={`₹${f2(c.toyCostPerPouch)} × ${c.totalPouches} pcs = ₹${f2(c.toyCostPerPouch*c.totalPouches)} total`} val={`₹${f2(c.toyCostPerPouch)}`} color="#166534" />}
-        <CRow label="Total cost per pouch" val={`₹${f2(c.totalCostPerPouch)}`} bold bg="#fff9f0" topBdr />
-        <CRow label={`${c.totalPouches} pouches × ₹${f2(c.totalCostPerPouch)}`} val={`₹${f2(c.pouchCost)}`} />
-        <CRow label="Packaging (carton/bags/bori)" val={`₹${f2(c.packCost)}`} />
-        <CRow label="Freight (local)" val={`₹${variant.freightLocal||40}`} />
-        <CRow label="Sub-total (pre-GST)" val={`₹${f2(c.preTaxCost)}`} bold />
-        <CRow label="+ Output GST 5%" val={`+₹${f2(c.outputTax)}`} color="#dc2626" />
-        <CRow label="− Input Tax Credits" note="Paid on RM/sub-recipe + laminate + packaging" val={`−₹${f2(c.inputTax)}`} color="#16a34a" />
-        <CRow label="Net GST payable" val={`₹${f2(c.netGST)}`} color={c.netGST>0?'#dc2626':'#16a34a'} />
-        <CRow label="Net Cost (inc. GST)" val={`₹${f2(c.netCost)}`} bold bg="#f9fafb" topBdr />
+      <div>
+        <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>Per Pouch Cost</div>
+        <div style={{borderRadius:'12px',overflow:'hidden',border:'1px solid '+border}}>
+          <Row label="Namkeen material cost" note={`${variant.fillWeightG}g × ₹${f2(c.totalCostPerKg)}/kg (overhead ₹${f2(c.totalOH)}/kg)`} val={`₹${f2(c.nmCostPerPouch)}`} />
+          <Row label="Laminate cost" note={`₹${variant.laminate?.ratePerKg}/kg ÷ ${variant.laminate?.pouchesPerKg} pcs`} val={`₹${f2(c.lamCostPerPouch)}`} />
+          {c.toyCostPerPouch>0&&<Row label="Toy / Insert cost" note={`₹${f2(c.toyCostPerPouch)} × ${c.totalPouches} pcs = ₹${f2(c.toyCostPerPouch*c.totalPouches)} total`} val={`₹${f2(c.toyCostPerPouch)}`} color="#16a34a" />}
+          <Row label="Total cost per pouch" val={`₹${f2(c.totalCostPerPouch)}`} bold topBdr />
+        </div>
       </div>
-      <div style={{background:mBg(c.markupPct),border:`2px solid ${mBdr(c.markupPct)}`,borderRadius:'12px',padding:'12px'}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
-          {[{l:'Sell Price',v:`₹${c.effectiveSP}`},{l:'Net Cost',v:`₹${f2(c.netCost)}`},{l:'Net Profit',v:`₹${f2(c.profit)}`,cl:mCol(c.markupPct)},{l:'Markup %',v:`${f1(c.markupPct)}%`,cl:mCol(c.markupPct)}].map(x=>(
-            <div key={x.l} style={{background:'#fff',borderRadius:'8px',padding:'10px',textAlign:'center'}}>
-              <div style={{fontSize:'10px',color:'#9ca3af'}}>{x.l}</div>
-              <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'17px',fontWeight:'800',color:x.cl||'#1c1c1c'}}>{x.v}</div>
+      <div>
+        <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>
+          Per {variant.packingType==='box'?'Carton':'Bori'} ({c.totalPouches} pouches)
+        </div>
+        <div style={{borderRadius:'12px',overflow:'hidden',border:'1px solid '+border}}>
+          <Row label={`${c.totalPouches} pouches × ₹${f2(c.totalCostPerPouch)}`} val={`₹${f2(c.pouchCost)}`} />
+          <Row label={`Packaging (${variant.packingType==='box'?variant.carton?.type||'carton':'LDPE bags + bori'})`} val={`₹${f2(c.packCost)}`} />
+          <Row label={`Freight (${freightOverride!==null?'outstation':'local'})`} val={`₹${c.freight}`} />
+          <Row label="Sub-total (pre-GST)" val={`₹${f2(c.preTaxCost)}`} bold />
+          <Row label="+ Output GST 5%" val={`+₹${f2(c.outputTax)}`} color="#c0392b" />
+          <Row label="− Input Tax Credits" note="Paid on RM/sub-recipes + laminate + packaging" val={`−₹${f2(c.inputTax)}`} color="#16a34a" />
+          <Row label="Net GST payable" val={`₹${f2(c.netGST)}`} color={c.netGST>=0?'#c0392b':'#16a34a'} />
+          <Row label="Net Cost (inc. GST)" val={`₹${f2(c.netCost)}`} bold topBdr />
+        </div>
+      </div>
+      <div style={{background:mBg(c.markupPct),borderRadius:'14px',padding:'16px',border:'1.5px solid '+mBdr(c.markupPct)}}>
+        <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'12px'}}>Margin Summary</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+          {[{l:'Sell Price',v:`₹${c.effectiveSP}`,cl:text1},{l:'Net Cost',v:`₹${f2(c.netCost)}`,cl:text1},{l:'Net Profit',v:`₹${f2(c.profit)}`,cl:mCol(c.markupPct)},{l:'Markup %',v:`${f1(c.markupPct)}%`,cl:mCol(c.markupPct)}].map(x=>(
+            <div key={x.l} style={{background:'rgba(255,255,255,0.75)',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
+              <div style={{fontSize:'11px',color:text2,marginBottom:'4px'}}>{x.l}</div>
+              <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'20px',fontWeight:'800',color:x.cl}}>{x.v}</div>
             </div>
           ))}
         </div>
-        <div style={{marginTop:'8px',background:'#fff',borderRadius:'8px',padding:'7px 10px',fontSize:'11px',color:'#6b7280',display:'flex',gap:'10px',justifyContent:'center',flexWrap:'wrap'}}>
-          <span>Cost/pouch: ₹{f2(c.costPerPouch)}</span>
-          <span>·</span><span>Gross margin: {f1(c.grossPct)}%</span>
-          <span>·</span><span>Overhead: ₹{f2(c.totalOH)}/kg</span>
+        <div style={{marginTop:'10px',background:'rgba(255,255,255,0.6)',borderRadius:'8px',padding:'8px 12px',fontSize:'11px',color:text2,display:'flex',gap:'14px',justifyContent:'center',flexWrap:'wrap'}}>
+          <span>Cost/pouch: <strong>₹{f2(c.costPerPouch)}</strong></span>
+          <span>·</span><span>Gross margin: <strong>{f1(c.grossPct)}%</strong></span>
+          <span>·</span><span>Overhead: <strong>₹{f2(c.totalOH)}/kg</strong></span>
         </div>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PRODUCT FORM
-// ═══════════════════════════════════════════════════════════════════════════
+
 function ProdForm({prod,rms,subs,onDone}) {
   const [name,setName]=useState(prod?.name||'');
   const [cat,setCat]=useState(prod?.category||'namkeen');
@@ -1165,365 +1176,148 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
   const current = prod;
   const pc = calcProduct(current,rms,subs);
   const myVars = variants.filter(v=>v.productId===current.id);
-  const selV = myVars.find(v=>v.id===selVId) || myVars[0] || null;
-  const HEADER_H = 56;
+  const selV = myVars.find(v=>v.id===selVId)||myVars[0]||null;
+  const HEADER_H=56;
 
-  const delProd = async()=>{
+  const delProd=async()=>{
     if(!confirm(`Delete "${current.name}" and ALL ${myVars.length} variants? Cannot be undone.`)) return;
     for(const v of myVars) await db.collection(C.VAR).doc(v.id).delete();
     await db.collection(C.PROD).doc(current.id).delete();
     onBack();
   };
-  const delVar = async v=>{
+  const delVar=async v=>{
     if(!confirm(`Delete this ₹${v.mrp} ${v.packingType} variant?`)) return;
     await db.collection(C.VAR).doc(v.id).delete();
     if(selVId===v.id) setSelVId(null);
   };
 
-  // Warm cream palette
-  const cream  = '#fdf8f3';
-  const cream2 = '#f7f0e8';
-  const border = '#e8ddd0';
-  const text1  = '#2c1810';
-  const text2  = '#7a6555';
-  const text3  = '#b09a88';
-  const orange = '#e8851b';
-  const orangeL= '#fff4e6';
+  const cream='#fdf8f3',cream2='#f7f0e8',border='#e8ddd0',text1='#2c1810',text2='#7a6555',text3='#b09a88',orange='#e8851b',orangeL='#fff4e6';
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:`calc(100vh - ${HEADER_H}px)`,overflow:'hidden',background:cream}}>
-
-      {/* ── Top bar ── */}
-      <div style={{
-        display:'flex',alignItems:'center',gap:'12px',
-        padding:'10px 20px',flexShrink:0,
-        background:'#fff',
-        borderBottom:`1px solid ${border}`,
-        boxShadow:'0 1px 4px rgba(0,0,0,0.04)'
-      }}>
-        <button onClick={onBack} style={{
-          display:'flex',alignItems:'center',gap:'5px',
-          background:cream2,border:`1px solid ${border}`,borderRadius:'8px',
-          padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'13px',
-          fontFamily:'Sora,sans-serif',color:text2,whiteSpace:'nowrap'
-        }}>← Back</button>
-        <div style={{fontWeight:'800',fontSize:'16px',color:text1,flex:1,letterSpacing:'0.2px'}}>{current.name}</div>
+      {/* Top bar */}
+      <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 20px',flexShrink:0,background:'#fff',borderBottom:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+        <button onClick={onBack} style={{background:cream2,border:`1px solid ${border}`,borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:'Sora,sans-serif',color:text2}}>← Back</button>
+        <div style={{fontWeight:'800',fontSize:'16px',color:text1,flex:1}}>{current.name}</div>
         <div style={{fontSize:'11px',color:text3,textTransform:'uppercase',letterSpacing:'0.8px',marginRight:'8px'}}>{current.category} · 5% GST</div>
-        <button onClick={()=>setPForm(true)} style={{
-          background:orangeL,border:`1px solid #fcd9a8`,borderRadius:'8px',
-          padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',
-          fontFamily:'Sora,sans-serif',color:orange,whiteSpace:'nowrap'
-        }}>✏️ Edit</button>
-        <button onClick={delProd} style={{
-          background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',
-          padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',
-          fontFamily:'Sora,sans-serif',color:'#c0392b',whiteSpace:'nowrap'
-        }}>🗑 Delete</button>
+        <button onClick={()=>setPForm(true)} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:orange}}>✏️ Edit</button>
+        <button onClick={delProd} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#c0392b'}}>🗑 Delete</button>
       </div>
 
-      {/* ── Two-panel ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden',width:'100%'}}>
-
-        {/* LEFT — 40% — Product summary + BOM + variant cards */}
-        <div style={{
-          width:'40%',display:'flex',flexDirection:'column',
-          borderRight:`2px solid ${border}`,overflowY:'auto',
-          background:'#fff'
-        }}>
-
-          {/* Product stat bar */}
-          <div style={{
-            background:`linear-gradient(135deg, #e8851b 0%, #f4a340 100%)`,
-            padding:'16px 20px',flexShrink:0
-          }}>
-            <div style={{fontWeight:'800',fontSize:'18px',color:'#fff',letterSpacing:'0.2px'}}>{current.name}</div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.75)',marginTop:'3px',textTransform:'uppercase',letterSpacing:'0.8px'}}>
-              {current.category} · {(current.bom||[]).length} ingredients · batch {current.batchOutputKg} kg
-            </div>
+        {/* LEFT — 40% */}
+        <div style={{width:'40%',display:'flex',flexDirection:'column',borderRight:`2px solid ${border}`,overflowY:'auto',background:'#fff'}}>
+          {/* Product header */}
+          <div style={{background:'linear-gradient(135deg,#e8851b,#f4a340)',padding:'14px',flexShrink:0}}>
+            <div style={{fontWeight:'800',fontSize:'17px',color:'#fff'}}>{current.name}</div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.75)',marginTop:'3px',textTransform:'uppercase',letterSpacing:'0.8px'}}>{current.category} · {(current.bom||[]).length} ingredients · batch {current.batchOutputKg}kg</div>
             {pc&&(
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginTop:'12px'}}>
-                {[
-                  {l:'Batch Cost',   v:`₹${f2(pc.bomCost)}`},
-                  {l:'Namkeen ₹/kg', v:`₹${f2(pc.namkeenCostPerKg)}`},
-                  {l:'BOM Items',    v:String((current.bom||[]).length)},
-                ].map(x=>(
+                {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Namkeen ₹/kg',v:`₹${f2(pc.namkeenCostPerKg)}`},{l:'BOM Items',v:String((current.bom||[]).length)}].map(x=>(
                   <div key={x.l} style={{background:'rgba(255,255,255,0.18)',borderRadius:'10px',padding:'9px',textAlign:'center'}}>
                     <div style={{fontSize:'10px',color:'rgba(255,255,255,0.65)',marginBottom:'3px',textTransform:'uppercase',letterSpacing:'0.5px'}}>{x.l}</div>
-                    <div style={{fontWeight:'800',color:'#fff',fontFamily:'JetBrains Mono,monospace',fontSize:'14px'}}>{x.v}</div>
+                    <div style={{fontWeight:'800',color:'#fff',fontFamily:'JetBrains Mono,monospace',fontSize:'13px'}}>{x.v}</div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          {/* BOM Table */}
+          {/* BOM */}
           {pc&&(
-            <div style={{padding:'16px 20px 8px',flexShrink:0}}>
-              <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'10px'}}>
-                Bill of Materials
-              </div>
-              <div style={{borderRadius:'12px',overflow:'hidden',border:`1px solid ${border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 52px 66px',background:cream2,padding:'8px 12px',gap:'4px',borderBottom:`1px solid ${border}`}}>
+            <div style={{padding:'12px 14px 8px',flexShrink:0}}>
+              <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>Bill of Materials</div>
+              <div style={{borderRadius:'12px',overflow:'hidden',border:`1px solid ${border}`}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 52px 66px',background:cream2,padding:'7px 10px',gap:'4px',borderBottom:`1px solid ${border}`}}>
                   {[{l:'Ingredient',a:'left'},{l:'Qty',a:'right'},{l:'Cost',a:'right'}].map(h=>(
                     <div key={h.l} style={{fontSize:'10px',fontWeight:'700',color:text2,textAlign:h.a,textTransform:'uppercase',letterSpacing:'0.5px'}}>{h.l}</div>
                   ))}
                 </div>
                 {pc.bomRows.map((item,i)=>(
-                  <div key={i} style={{
-                    display:'grid',gridTemplateColumns:'1fr 52px 66px',
-                    padding:'8px 12px',gap:'4px',alignItems:'center',
-                    borderTop:`1px solid ${i===0?'transparent':border}`,
-                    background: i%2===0?'#fff':cream,
-                  }}>
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 52px 66px',padding:'7px 10px',gap:'4px',alignItems:'center',borderTop:i===0?'none':`1px solid ${border}`,background:i%2===0?'#fff':cream}}>
                     <div>
                       <span style={{fontWeight:'600',fontSize:'12px',color:text1}}>{item.refName}</span>
-                      <span style={{
-                        marginLeft:'5px',fontSize:'9px',padding:'1px 5px',borderRadius:'8px',
-                        background:item.type==='sub'?'#f3e8ff':'#e0f2fe',
-                        color:item.type==='sub'?'#7c3aed':'#0369a1',
-                        fontWeight:'700'
-                      }}>{item.type==='sub'?'PROC':'RAW'}</span>
+                      <span style={{marginLeft:'5px',fontSize:'9px',padding:'1px 5px',borderRadius:'8px',background:item.type==='sub'?'#f3e8ff':'#e0f2fe',color:item.type==='sub'?'#7c3aed':'#0369a1',fontWeight:'700'}}>{item.type==='sub'?'PROC':'RAW'}</span>
                     </div>
                     <div style={{textAlign:'right',fontSize:'11px',color:text2,fontFamily:'JetBrains Mono,monospace'}}>{item.qtyKg}kg</div>
-                    <div style={{textAlign:'right',fontWeight:'700',fontSize:'12px',fontFamily:'JetBrains Mono,monospace',color:text1}}>₹{f2(item.cost)}</div>
+                    <div style={{textAlign:'right',fontWeight:'700',fontSize:'11px',fontFamily:'JetBrains Mono,monospace',color:text1}}>₹{f2(item.cost)}</div>
                   </div>
                 ))}
-                <div style={{
-                  display:'grid',gridTemplateColumns:'1fr 66px',
-                  padding:'9px 12px',background:orangeL,
-                  borderTop:`2px solid #fcd9a8`,gap:'4px'
-                }}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 66px',padding:'8px 10px',background:orangeL,borderTop:`2px solid #fcd9a8`,gap:'4px'}}>
                   <div style={{fontWeight:'700',fontSize:'12px',color:orange}}>Total Batch Cost</div>
                   <div style={{textAlign:'right',fontFamily:'JetBrains Mono,monospace',fontWeight:'800',color:orange,fontSize:'13px'}}>₹{f2(pc.bomCost)}</div>
                 </div>
               </div>
             </div>
           )}
-
-          {/* Pack variant cards */}
-          <div style={{padding:'8px 20px 20px'}}>
+          {/* Variant cards */}
+          <div style={{padding:'8px 14px 14px'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
-              <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase'}}>
-                Pack Variants ({myVars.length})
-              </div>
-              <button onClick={()=>{setEditV(null);setVForm(true);}} style={{
-                background:orange,color:'#fff',border:'none',borderRadius:'8px',
-                padding:'6px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',
-                fontFamily:'Sora,sans-serif',boxShadow:'0 2px 6px rgba(232,133,27,0.3)'
-              }}>+ Add Variant</button>
+              <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase'}}>Pack Variants ({myVars.length})</div>
+              <button onClick={()=>{setEditV(null);setVForm(true);}} style={{background:orange,color:'#fff',border:'none',borderRadius:'8px',padding:'6px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',boxShadow:'0 2px 6px rgba(232,133,27,0.3)'}}>+ Add Variant</button>
             </div>
-
             {myVars.length===0?(
-              <div style={{textAlign:'center',padding:'32px 16px',color:text3,fontSize:'13px',
-                background:cream,borderRadius:'12px',border:`1.5px dashed ${border}`}}>
-                No variants yet.<br/>
-                <span style={{color:orange,fontWeight:'700',cursor:'pointer'}} onClick={()=>setVForm(true)}>Add your first variant →</span>
-              </div>
+              <div style={{textAlign:'center',padding:'28px 12px',color:text3,fontSize:'12px',background:cream,borderRadius:'12px',border:`1.5px dashed ${border}`}}>No variants yet.<br/><span style={{color:orange,fontWeight:'700',cursor:'pointer'}} onClick={()=>setVForm(true)}>Add your first variant →</span></div>
             ):myVars.map(v=>{
               const vc=pc?calcVariant(v,pc,oh):null;
               const isSel=selV?.id===v.id;
               return (
                 <div key={v.id} onClick={()=>setSelVId(v.id)}
-                  style={{
-                    borderRadius:'12px',padding:'11px 14px',marginBottom:'8px',cursor:'pointer',
-                    border: isSel?`2px solid ${orange}`:`1.5px solid ${border}`,
-                    background: isSel?orangeL:'#fff',
-                    boxShadow: isSel?`0 2px 12px rgba(232,133,27,0.15)`:'0 1px 3px rgba(0,0,0,0.04)',
-                    transition:'all 0.18s',
-                  }}>
+                  style={{borderRadius:'12px',padding:'10px 12px',marginBottom:'7px',cursor:'pointer',
+                    border:isSel?`2px solid ${orange}`:`1.5px solid ${border}`,
+                    background:isSel?orangeL:'#fff',
+                    boxShadow:isSel?'0 2px 12px rgba(232,133,27,0.15)':'0 1px 3px rgba(0,0,0,0.04)',transition:'all 0.18s'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div>
-                      <span style={{fontWeight:'800',fontSize:'14px',color:text1}}>₹{v.mrp} MRP</span>
-                      <span style={{marginLeft:'6px',fontSize:'14px'}}>{v.packingType==='box'?'📦':'👜'}</span>
+                      <span style={{fontWeight:'800',fontSize:'13px',color:text1}}>₹{v.mrp} MRP</span>
+                      <span style={{marginLeft:'6px',fontSize:'13px'}}>{v.packingType==='box'?'📦':'👜'}</span>
                       <span style={{marginLeft:'4px',fontSize:'11px',color:text2}}>{v.packingType} · {v.fillWeightG}g</span>
                     </div>
-                    {vc&&(
-                      <div style={{
-                        background:mBg(vc.markupPct),color:mCol(vc.markupPct),
-                        border:`1.5px solid ${mBdr(vc.markupPct)}`,borderRadius:'20px',
-                        padding:'3px 10px',fontSize:'12px',fontWeight:'800',
-                        fontFamily:'JetBrains Mono,monospace'
-                      }}>{f1(vc.markupPct)}%</div>
-                    )}
+                    {vc&&<div style={{background:mBg(vc.markupPct),color:mCol(vc.markupPct),border:`1.5px solid ${mBdr(vc.markupPct)}`,borderRadius:'20px',padding:'3px 10px',fontSize:'12px',fontWeight:'800',fontFamily:'JetBrains Mono,monospace'}}>{f1(vc.markupPct)}%</div>}
                   </div>
-                  {vc&&(
-                    <div style={{fontSize:'11px',color:text2,marginTop:'4px',lineHeight:'1.5'}}>
-                      {vc.totalPouches} pcs · SP ₹{vc.effectiveSP} · Cost ₹{f2(vc.netCost)} · Profit ₹{f2(vc.profit)}
-                    </div>
-                  )}
-                  {isSel&&(
-                    <div style={{fontSize:'10px',color:orange,fontWeight:'700',marginTop:'5px',display:'flex',alignItems:'center',gap:'4px'}}>
-                      <span>▶</span> Detail shown on right
-                    </div>
-                  )}
+                  {vc&&<div style={{fontSize:'10px',color:text2,marginTop:'4px'}}>SP ₹{vc.effectiveSP} · Cost ₹{f2(vc.netCost)} · Profit ₹{f2(vc.profit)}</div>}
+                  {isSel&&<div style={{fontSize:'10px',color:orange,fontWeight:'700',marginTop:'4px',display:'flex',alignItems:'center',gap:'4px'}}><span>▶</span> Detail shown on right</div>}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* RIGHT — 60% — Variant cost breakdown */}
-        <div style={{width:'60%',overflowY:'auto',background:cream,padding:'20px 24px',display:'flex',flexDirection:'column',gap:'14px'}}>
-
-          {selV&&pc ? (()=>{
-            const c2 = calcVariant(selV,pc,oh,freightView==='outstation'?(selV.freightOutstation||60):null);
-            if(!c2) return null;
-
-            const CRow = ({label,val,note,bold,color,topBdr,bg}) => (
-              <div style={{
-                display:'flex',justifyContent:'space-between',alignItems:'center',
-                padding:'9px 14px',
-                background: bg || (bold?'#fffbf5':'#fff'),
-                borderTop: topBdr?`2px solid #fcd9a8`:`1px solid ${border}`,
-              }}>
+        {/* RIGHT — 60% */}
+        <div style={{width:'60%',overflowY:'auto',background:cream,padding:'16px 20px',display:'flex',flexDirection:'column',gap:'12px'}}>
+          {selV&&pc ? (
+            <>
+              {/* Variant header */}
+              <div style={{background:'#fff',borderRadius:'14px',padding:'14px 18px',border:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.05)',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                 <div>
-                  <div style={{fontSize:'13px',fontWeight:bold?'700':'400',color:bold?text1:text2}}>{label}</div>
-                  {note&&<div style={{fontSize:'10px',color:text3,marginTop:'1px'}}>{note}</div>}
-                </div>
-                <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'13px',fontWeight:bold?'700':'500',color:color||text1,whiteSpace:'nowrap'}}>{val}</div>
-              </div>
-            );
-
-            return (
-              <>
-                {/* Variant header */}
-                <div style={{
-                  background:'#fff',borderRadius:'14px',padding:'14px 18px',
-                  border:`1px solid ${border}`,
-                  boxShadow:'0 1px 4px rgba(0,0,0,0.05)',
-                  display:'flex',justifyContent:'space-between',alignItems:'flex-start'
-                }}>
-                  <div>
-                    <div>
-                    <div style={{fontWeight:'800',fontSize:'17px',color:text1}}>
-                      ₹{selV.mrp} MRP &nbsp;·&nbsp; {selV.packingType==='box'?'📦 Box':'👜 Bag / Bori'}
-                    </div>
-                    <div style={{fontSize:'12px',color:text2,marginTop:'4px'}}>
-                      Fill {selV.fillWeightG}g &nbsp;·&nbsp; {selV.laminate?.sizeDesc||'—'} &nbsp;·&nbsp; {c2.totalPouches} pouches/unit
-                    </div>
-                    {/* Local / Outstation toggle */}
-                    <div style={{display:'flex',gap:'5px',marginTop:'8px'}}>
-                      {[{id:'local',label:`📍 Local ₹${selV.freightLocal||40}`},{id:'outstation',label:`✈️ Outstation ₹${selV.freightOutstation||60}`}].map(t=>(
-                        <button key={t.id} onClick={()=>setFreightView(t.id)}
-                          style={{padding:'4px 10px',borderRadius:'6px',border:'none',cursor:'pointer',
-                            fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',
-                            background:freightView===t.id?orange:cream2,
-                            color:freightView===t.id?'#fff':text2,
-                            border:freightView===t.id?'none':`1px solid ${border}`}}>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{display:'flex',gap:'6px'}}>
-                    <button onClick={()=>{setEditV(selV);setVForm(true);}} style={{
-                      background:orangeL,border:`1px solid #fcd9a8`,borderRadius:'8px',
-                      padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',
-                      fontFamily:'Sora,sans-serif',color:orange
-                    }}>✏️ Edit</button>
-                    <button onClick={()=>delVar(selV)} style={{
-                      background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',
-                      padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',
-                      fontFamily:'Sora,sans-serif',color:'#c0392b'
-                    }}>🗑</button>
-                  </div>
-                </div>
-
-                {/* 3 info chips */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
-                  {[
-                    {l:'Fill Weight',v:`${selV.fillWeightG}g`},
-                    {l:'Pouches / Unit',v:String(c2.totalPouches)},
-                    {l:'Pack Type',v:selV.packingType},
-                  ].map(x=>(
-                    <div key={x.l} style={{background:'#fff',borderRadius:'10px',padding:'10px',textAlign:'center',border:`1px solid ${border}`,boxShadow:'0 1px 3px rgba(0,0,0,0.03)'}}>
-                      <div style={{fontSize:'10px',color:text3,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>{x.l}</div>
-                      <div style={{fontWeight:'700',fontSize:'14px',color:text1}}>{x.v}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Per Pouch breakdown */}
-                <div>
-                  <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>Per Pouch Cost</div>
-                  <div style={{borderRadius:'12px',overflow:'hidden',border:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
-                    <CRow label="Namkeen material cost"
-                      note={`${selV.fillWeightG}g × ₹${f2(c2.totalCostPerKg)}/kg (incl. overhead ₹${f2(c2.totalOH)}/kg)`}
-                      val={`₹${f2(c2.nmCostPerPouch)}`} />
-                    <CRow label="Laminate cost"
-                      note={`₹${selV.laminate?.ratePerKg}/kg ÷ ${selV.laminate?.pouchesPerKg} pcs`}
-                      val={`₹${f2(c2.lamCostPerPouch)}`} />
-                    {c2.toyCostPerPouch>0&&(
-                      <CRow label="Toy / Insert cost"
-                        note={`₹${f2(c2.toyCostPerPouch)} × ${c2.totalPouches} pcs = ₹${f2(c2.toyCostPerPouch*c2.totalPouches)} total`}
-                        val={`₹${f2(c2.toyCostPerPouch)}`} color="#16a34a" />
-                    )}
-                    <CRow label="Total cost per pouch" val={`₹${f2(c2.totalCostPerPouch)}`} bold topBdr bg="#fffbf5" />
-                  </div>
-                </div>
-
-                {/* Per Unit breakdown */}
-                <div>
-                  <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>
-                    Per {selV.packingType==='box'?'Carton':'Bori'} Cost ({c2.totalPouches} pouches)
-                  </div>
-                  <div style={{borderRadius:'12px',overflow:'hidden',border:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
-                    <CRow label={`${c2.totalPouches} pouches × ₹${f2(c2.totalCostPerPouch)}`} val={`₹${f2(c2.pouchCost)}`} />
-                    <CRow label={`Packaging (${selV.packingType==='box'?selV.carton?.type||'carton':'LDPE bags + bori'})`} val={`₹${f2(c2.packCost)}`} />
-                    <CRow label={`Freight (${freightView==='local'?'local':'outstation'})`} val={`₹${c2.freight}`} />
-                    <CRow label="Sub-total (pre-GST)" val={`₹${f2(c2.preTaxCost)}`} bold />
-                    <CRow label="+ Output GST 5%" val={`+₹${f2(c2.outputTax)}`} color="#c0392b" />
-                    <CRow label="− Input Tax Credits"
-                      note="Paid on RM/sub-recipes + laminate + packaging"
-                      val={`−₹${f2(c2.inputTax)}`} color="#16a34a" />
-                    <CRow label="Net GST payable" val={`₹${f2(c2.netGST)}`} color={c2.netGST>=0?'#c0392b':'#16a34a'} />
-                    <CRow label="Net Cost (inc. GST)" val={`₹${f2(c2.netCost)}`} bold topBdr bg="#fffbf5" />
-                  </div>
-                </div>
-
-                {/* Margin summary */}
-                <div style={{
-                  background:'#fff',borderRadius:'14px',padding:'16px',
-                  border:`1.5px solid ${mBdr(c2.markupPct)}`,
-                  background:mBg(c2.markupPct),
-                  boxShadow:'0 2px 8px rgba(0,0,0,0.05)'
-                }}>
-                  <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'12px'}}>Margin Summary</div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
-                    {[
-                      {l:'Sell Price',    v:`₹${c2.effectiveSP}`,    cl:text1},
-                      {l:'Net Cost',      v:`₹${f2(c2.netCost)}`,    cl:text1},
-                      {l:'Net Profit',    v:`₹${f2(c2.profit)}`,     cl:mCol(c2.markupPct)},
-                      {l:'Markup %',      v:`${f1(c2.markupPct)}%`,  cl:mCol(c2.markupPct)},
-                    ].map(x=>(
-                      <div key={x.l} style={{background:'rgba(255,255,255,0.75)',borderRadius:'10px',padding:'12px',textAlign:'center',backdropFilter:'blur(4px)'}}>
-                        <div style={{fontSize:'11px',color:text2,marginBottom:'4px'}}>{x.l}</div>
-                        <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:'20px',fontWeight:'800',color:x.cl}}>{x.v}</div>
-                      </div>
+                  <div style={{fontWeight:'800',fontSize:'17px',color:text1}}>₹{selV.mrp} MRP &nbsp;·&nbsp; {selV.packingType==='box'?'📦 Box':'👜 Bag / Bori'}</div>
+                  <div style={{fontSize:'12px',color:text2,marginTop:'4px'}}>Fill {selV.fillWeightG}g &nbsp;·&nbsp; {selV.laminate?.sizeDesc||'—'}</div>
+                  {/* Local / Outstation toggle */}
+                  <div style={{display:'flex',gap:'6px',marginTop:'8px'}}>
+                    {[{id:'local',label:`📍 Local ₹${selV.freightLocal||40}`},{id:'outstation',label:`✈️ Outstation ₹${selV.freightOutstation||60}`}].map(t=>(
+                      <button key={t.id} onClick={()=>setFreightView(t.id)}
+                        style={{padding:'5px 11px',borderRadius:'7px',border:freightView===t.id?'none':`1px solid ${border}`,cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:freightView===t.id?orange:cream2,color:freightView===t.id?'#fff':text2}}>
+                        {t.label}
+                      </button>
                     ))}
                   </div>
-                  <div style={{marginTop:'10px',background:'rgba(255,255,255,0.6)',borderRadius:'8px',padding:'8px 12px',fontSize:'11px',color:text2,display:'flex',gap:'14px',justifyContent:'center',flexWrap:'wrap'}}>
-                    <span>Cost/pouch: <strong>₹{f2(c2.costPerPouch)}</strong></span>
-                    <span>·</span>
-                    <span>Gross margin: <strong>{f1(c2.grossPct)}%</strong></span>
-                    <span>·</span>
-                    <span>Overhead: <strong>₹{f2(c2.totalOH)}/kg</strong></span>
-                  </div>
                 </div>
-              </>
-            );
-          })():(
+                <div style={{display:'flex',gap:'6px'}}>
+                  <button onClick={()=>{setEditV(selV);setVForm(true);}} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:orange}}>✏️ Edit</button>
+                  <button onClick={()=>delVar(selV)} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#c0392b'}}>🗑</button>
+                </div>
+              </div>
+              {/* Cost breakdown via VarDetail */}
+              <VarDetail variant={selV} pc={pc} oh={oh} freightOverride={freightView==='outstation'?(selV.freightOutstation||60):null} />
+            </>
+          ):(
             <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'14px',color:text3,minHeight:'300px'}}>
               <div style={{fontSize:'56px',opacity:0.4}}>📦</div>
               <div style={{fontWeight:'700',fontSize:'16px',color:text2}}>Select a variant</div>
-              <div style={{fontSize:'13px',textAlign:'center',lineHeight:'1.8',color:text3}}>
-                Click any variant card on the left<br/>to see its full cost breakdown here.
-              </div>
+              <div style={{fontSize:'13px',textAlign:'center',lineHeight:'1.8',color:text3}}>Click any variant card on the left<br/>to see its full cost breakdown here.</div>
             </div>
           )}
         </div>
       </div>
-
       {pForm&&<Modal title="Edit Product" onClose={()=>setPForm(false)}><ProdForm prod={current} rms={rms} subs={subs} onDone={()=>setPForm(false)} /></Modal>}
       {vForm&&<Modal title={editV?'Edit Variant':'Add Pack Variant'} onClose={()=>setVForm(false)}><VarForm v={editV} productId={current.id} productName={current.name} onDone={()=>setVForm(false)} /></Modal>}
     </div>
