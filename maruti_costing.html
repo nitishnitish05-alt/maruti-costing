@@ -823,9 +823,42 @@ function VarForm({v:vt,productId,productName,onDone}) {
   const [frL,setFrL]=useState(vt?.freightLocal||40);
   const [frO,setFrO]=useState(vt?.freightOutstation||'');
   const [toy,setToy]=useState(vt?.toyCostPerPouch||'');
+  // Laminate structure calculator states
+  const [showLamCalc,setShowLamCalc]=useState(false);
+  const [lcW,setLcW]=useState('');
+  const [lcH,setLcH]=useState('');
+  const [lcLayers,setLcLayers]=useState(3);
+  const [lcMics,setLcMics]=useState(['12','12','20','']);
+  const [lcMats,setLcMats]=useState(['pet','metpet','ldpe','ldpe']);
   const [busy,setBusy]=useState(false);
 
   const totalPouches = pt==='box'?num(ctPk):num(pbPk)*num(mbCt);
+
+  // Laminate calculator constants & computation
+  const MATS_DB = {
+    pet:     {label:'PET (Polyester)',       density:1.390},
+    metpet:  {label:'MET PET (Metallised)',  density:1.390},
+    ldpe:    {label:'LDPE / PE (Sealing)',   density:0.925},
+    bopp:    {label:'BOPP',                  density:0.910},
+    metbopp: {label:'MET BOPP',              density:0.910},
+    cpp:     {label:'CPP',                   density:0.910},
+  };
+  const updMic=(i,v)=>setLcMics(prev=>{const a=[...prev];a[i]=v;return a;});
+  const updMat=(i,v)=>setLcMats(prev=>{const a=[...prev];a[i]=v;return a;});
+
+  const lcCalc=(()=>{
+    const w=num(lcW),h=num(lcH);
+    if(!w||!h) return null;
+    let layerGSM=0;
+    for(let i=0;i<lcLayers;i++) layerGSM+=num(lcMics[i])*(MATS_DB[lcMats[i]]?.density||1.39);
+    const bonds=lcLayers-1;
+    const adhesiveGSM=bonds*2, inkGSM=2;
+    const compositeGSM=layerGSM+adhesiveGSM+inkGSM;
+    const areaM2=(w/1000)*(h/1000);
+    const pouchWeightG=compositeGSM*areaM2;
+    const pouchesPerKg=pouchWeightG>0?Math.round(1000/pouchWeightG):0;
+    return {compositeGSM,pouchWeightG,pouchesPerKg,layerGSM,adhesiveGSM,inkGSM};
+  })();
 
   const save = async()=>{
     if(!mrp||!fw||!sp) return;
@@ -870,11 +903,113 @@ function VarForm({v:vt,productId,productName,onDone}) {
       {/* Laminate */}
       <div style={{background:'#f9fafb',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
         <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase'}}>🎁 Laminate Pouch (18% GST)</div>
-        <Inp label="Pouch Size (e.g. 240×150mm)" value={lamSz} onChange={setLamSz} />
+        <Inp label="Pouch Size Description (e.g. 240×150mm)" value={lamSz} onChange={setLamSz} />
         <Row2>
           <Inp label="Rate ₹/kg" value={lamRt} onChange={setLamRt} type="number" />
-          <Inp label="Pouches per kg" value={lamPk} onChange={setLamPk} type="number" />
+          <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>Pouches per kg</label>
+              <button onClick={()=>setShowLamCalc(s=>!s)} style={{fontSize:'10px',fontWeight:'700',background:showLamCalc?'#e8851b':'#f3f4f6',color:showLamCalc?'#fff':'#e8851b',border:'none',borderRadius:'5px',padding:'2px 7px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
+                🧮 {showLamCalc?'Hide Calc':'Calculate'}
+              </button>
+            </div>
+            <input type="number" value={lamPk} onChange={e=>setLamPk(e.target.value)}
+              placeholder="e.g. 480"
+              style={{border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',width:'100%',background:'#fff'}} />
+          </div>
         </Row2>
+
+        {/* ── Laminate Structure Calculator ── */}
+        {showLamCalc&&(
+          <div style={{background:'#1c1c2e',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}}>
+            <div style={{fontSize:'11px',fontWeight:'800',color:'#a78bfa',letterSpacing:'1px',textTransform:'uppercase'}}>🧮 Structure Calculator</div>
+
+            {/* Pouch dimensions */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+              <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
+                <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase'}}>Width (mm)</label>
+                <input type="number" value={lcW} onChange={e=>setLcW(e.target.value)} placeholder="e.g. 240"
+                  style={{border:'1px solid #374151',borderRadius:'6px',padding:'7px 10px',fontSize:'13px',background:'#2d2d44',color:'#f3f4f6',fontFamily:'JetBrains Mono,monospace'}} />
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
+                <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase'}}>Height (mm)</label>
+                <input type="number" value={lcH} onChange={e=>setLcH(e.target.value)} placeholder="e.g. 150"
+                  style={{border:'1px solid #374151',borderRadius:'6px',padding:'7px 10px',fontSize:'13px',background:'#2d2d44',color:'#f3f4f6',fontFamily:'JetBrains Mono,monospace'}} />
+              </div>
+            </div>
+
+            {/* Layer count selector */}
+            <div>
+              <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase',display:'block',marginBottom:'5px'}}>Number of Layers</label>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'5px'}}>
+                {[2,3,4].map(n=>(
+                  <button key={n} onClick={()=>setLcLayers(n)}
+                    style={{padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:lcLayers===n?'#a78bfa':'#374151',color:'#fff'}}>
+                    {n}-Layer
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Layer inputs */}
+            <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 70px',gap:'6px'}}>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>Layer</div>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase'}}>Material</div>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',textAlign:'center'}}>Micron</div>
+              </div>
+              {Array.from({length:lcLayers},(_,i)=>(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 70px',gap:'6px',alignItems:'center'}}>
+                  <div style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',fontWeight:'600'}}>
+                    {i===0?'Outer (Print)':i===lcLayers-1?'Inner (Seal)':`Layer ${i+1}`}
+                  </div>
+                  <select value={lcMats[i]||'pet'} onChange={e=>updMat(i,e.target.value)}
+                    style={{border:'1px solid #374151',borderRadius:'6px',padding:'5px 6px',fontSize:'11px',background:'#2d2d44',color:'#f3f4f6'}}>
+                    {Object.entries(MATS_DB).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                  <input type="number" value={lcMics[i]||''} onChange={e=>updMic(i,e.target.value)}
+                    placeholder="μ"
+                    style={{border:'1px solid #374151',borderRadius:'6px',padding:'5px 8px',fontSize:'12px',background:'#2d2d44',color:'#f3f4f6',fontFamily:'JetBrains Mono,monospace',textAlign:'center',width:'100%'}} />
+                </div>
+              ))}
+            </div>
+
+            {/* Fixed values note */}
+            <div style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',borderTop:'1px solid #374151',paddingTop:'7px'}}>
+              Fixed: Adhesive {(lcLayers-1)*2} GSM ({lcLayers-1} bonds × 2 GSM) · Ink 2 GSM
+            </div>
+
+            {/* Results */}
+            {lcCalc&&lcCalc.pouchesPerKg>0&&(
+              <div style={{background:'#2d2d44',borderRadius:'8px',padding:'10px'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',textAlign:'center',marginBottom:'10px'}}>
+                  {[
+                    {l:'Composite GSM',v:`${f2(lcCalc.compositeGSM)}`},
+                    {l:'Pouch Weight',v:`${f2(lcCalc.pouchWeightG)}g`},
+                    {l:'Pouches / kg',v:`${lcCalc.pouchesPerKg}`},
+                  ].map(x=>(
+                    <div key={x.l}>
+                      <div style={{fontSize:'9px',color:'rgba(255,255,255,0.5)',marginBottom:'2px',textTransform:'uppercase'}}>{x.l}</div>
+                      <div style={{fontFamily:'JetBrains Mono,monospace',fontWeight:'800',fontSize:'14px',color:'#a78bfa'}}>{x.v}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={()=>{setLamPk(String(lcCalc.pouchesPerKg));setShowLamCalc(false);}}
+                  style={{width:'100%',background:'#a78bfa',color:'#fff',border:'none',borderRadius:'7px',padding:'9px',fontWeight:'800',fontSize:'13px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
+                  ✓ Use {lcCalc.pouchesPerKg} pouches/kg
+                </button>
+              </div>
+            )}
+            {(!lcCalc||lcCalc.pouchesPerKg===0)&&lcW&&lcH&&(
+              <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Enter micron values for all layers to calculate</div>
+            )}
+            {(!lcW||!lcH)&&(
+              <div style={{fontSize:'11px',color:'rgba(255,255,255,0.4)',textAlign:'center'}}>Enter pouch width and height to calculate</div>
+            )}
+          </div>
+        )}
+
         {lamRt&&lamPk&&<InfoBox color="orange">Cost/pouch: ₹{f2(lamRt/lamPk)} · Tax input: ₹{f2((lamRt*0.18)/lamPk)}/pouch</InfoBox>}
       </div>
 
