@@ -1116,12 +1116,14 @@ function VarDetail({variant, pc, oh, freightOverride=null}) {
 }
 
 
-function ProdForm({prod,rms,subs,onDone}) {
+function ProdForm({prod,rms,subs,products=[],onDone}) {
   const [name,setName]=useState(prod?.name||'');
   const [cat,setCat]=useState(prod?.category||'namkeen');
   const [bom,setBom]=useState(prod?.bom||[]);
   const [outKg,setOutKg]=useState(prod?.batchOutputKg||'');
   const [notes,setNotes]=useState(prod?.notes||'');
+  const [copyId,setCopyId]=useState('');
+  const [copied,setCopied]=useState(false);
   const [busy,setBusy]=useState(false);
 
   const pc = bom.length&&outKg?calcProduct({bom,batchOutputKg:num(outKg)},rms,subs):null;
@@ -1141,6 +1143,33 @@ function ProdForm({prod,rms,subs,onDone}) {
     <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
       <Inp label="Product Name" value={name} onChange={setName} req placeholder="e.g. Aloo Bhujia" />
       <Sel label="Category" value={cat} onChange={setCat} opts={[{v:'namkeen',l:'🍘 Namkeen'},{v:'snacks',l:'🍟 Snacks (Fryums, etc.)'}]} />
+      {/* Copy BOM from existing product */}
+      {!prod&&(
+        <div style={{background:'#eff6ff',border:'1.5px solid #bfdbfe',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+          <div style={{fontSize:'11px',fontWeight:'800',color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'0.8px'}}>📋 Copy BOM from Existing Product</div>
+          <div style={{display:'flex',gap:'8px',alignItems:'flex-end'}}>
+            <div style={{flex:1}}>
+              <select value={copyId} onChange={e=>setCopyId(e.target.value)}
+                style={{width:'100%',border:'1.5px solid #bfdbfe',borderRadius:'8px',padding:'9px 12px',fontSize:'13px',background:'#fff',fontFamily:'Nunito,sans-serif'}}>
+                <option value="">— Select a product to copy from —</option>
+                {products.map(p=><option key={p.id} value={p.id}>{p.name} ({(p.bom||[]).length} items · {p.batchOutputKg}kg batch)</option>)}
+              </select>
+            </div>
+            <button onClick={()=>{
+              const src=products.find(p=>p.id===copyId);
+              if(!src) return;
+              setBom((src.bom||[]).map(item=>({...item,_id:Date.now()+Math.random()+''})));
+              setOutKg(String(src.batchOutputKg||''));
+              setCopied(true);
+              setTimeout(()=>setCopied(false),2500);
+            }} disabled={!copyId}
+              style={{background:copyId?'#1d4ed8':'#e5e7eb',color:copyId?'#fff':'#9ca3af',border:'none',borderRadius:'8px',padding:'9px 16px',cursor:copyId?'pointer':'default',fontWeight:'700',fontSize:'13px',fontFamily:'Nunito,sans-serif',whiteSpace:'nowrap'}}>
+              {copied?'✅ Copied!':'Copy BOM'}
+            </button>
+          </div>
+          {copied&&<div style={{fontSize:'12px',color:'#1d4ed8',fontWeight:'600'}}>BOM and batch output copied — review and adjust quantities as needed, then save.</div>}
+        </div>
+      )}
       <div>
         <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'8px'}}>Bill of Materials (per batch) *</div>
         <BOMBuilder bom={bom} onChange={setBom} rms={rms} subs={subs} allowSubs={true} />
@@ -1337,7 +1366,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
           )}
         </div>
       </div>
-      {pForm&&<Modal title="Edit Product" onClose={()=>setPForm(false)}><ProdForm prod={current} rms={rms} subs={subs} onDone={()=>setPForm(false)} /></Modal>}
+      {pForm&&<Modal title="Edit Product" onClose={()=>setPForm(false)}><ProdForm prod={current} rms={rms} subs={subs} products={[]} onDone={()=>setPForm(false)} /></Modal>}
       {vForm&&<Modal title={editV?'Edit Variant':'Add Pack Variant'} onClose={()=>setVForm(false)}><VarForm v={editV} productId={current.id} productName={current.name} onDone={()=>setVForm(false)} /></Modal>}
     </div>
   );
@@ -1399,7 +1428,7 @@ function Products({products,variants,rms,subs,oh}) {
           </Card>
         );
       })}
-      {form&&<Modal title="Add New Product" onClose={()=>setForm(false)}><ProdForm rms={rms} subs={subs} onDone={()=>setForm(false)} /></Modal>}
+      {form&&<Modal title="Add New Product" onClose={()=>setForm(false)}><ProdForm rms={rms} subs={subs} products={products} onDone={()=>setForm(false)} /></Modal>}
     </div>
   );
 }
