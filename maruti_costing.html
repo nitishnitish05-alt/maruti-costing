@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Maruti Namkeen Costing</title>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; font-family:'Sora',sans-serif; -webkit-tap-highlight-color:transparent; font-size:16px; }
-    body { background:#f8f4ef; overscroll-behavior:none; font-size:16px; }
-    input,select,button { font-family:'Sora',sans-serif; font-size:16px; }
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Nunito',sans-serif; -webkit-tap-highlight-color:transparent; font-size:18px; }
+    body { background:#f8f4ef; overscroll-behavior:none; font-size:18px; }
+    input,select,button { font-family:'Nunito',sans-serif; font-size:18px; }
     input:focus,select:focus { outline:2px solid #e8851b; outline-offset:1px; }
     ::-webkit-scrollbar { width:3px; }
     ::-webkit-scrollbar-thumb { background:#e8851b; border-radius:2px; }
@@ -101,7 +101,7 @@ function LoginScreen({onLogin}) {
               style={{
                 width:'100%', border:'2px solid #e5e7eb', borderRadius:'10px',
                 padding:'13px 44px 13px 16px', fontSize:'15px',
-                fontFamily:'Sora,sans-serif', color:'#1c1c1c',
+                fontFamily:'Nunito,sans-serif', color:'#1c1c1c',
                 transition:'border-color 0.2s',
                 borderColor: error?'#dc2626':'#e5e7eb'
               }}
@@ -129,7 +129,7 @@ function LoginScreen({onLogin}) {
               color: pw?'#fff':'#9ca3af',
               border:'none', borderRadius:'10px', padding:'14px',
               fontSize:'15px', fontWeight:'800', cursor:pw?'pointer':'default',
-              fontFamily:'Sora,sans-serif', marginTop:'4px',
+              fontFamily:'Nunito,sans-serif', marginTop:'4px',
               transition:'all 0.2s'
             }}
           >
@@ -277,7 +277,7 @@ function Btn({children,onClick,v='primary',sm,full,disabled,style:s={}}) {
       background:bg,color:cl,border:'none',borderRadius:'8px',
       padding:sm?'6px 12px':'10px 16px',fontSize:sm?'12px':'13px',
       fontWeight:'700',cursor:disabled?'default':'pointer',opacity:disabled?.6:1,
-      width:full?'100%':'auto',fontFamily:'Sora,sans-serif',...s
+      width:full?'100%':'auto',fontFamily:'Nunito,sans-serif',...s
     }}>{children}</button>
   );
 }
@@ -310,7 +310,7 @@ function Modal({title,onClose,children}) {
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:100,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
       <div style={{background:'#fff',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:'540px',maxHeight:'92vh',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:'1px solid #f3f4f6',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-          <button onClick={onClose} style={{display:'flex',alignItems:'center',gap:'5px',background:'#f3f4f6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:"Sora,sans-serif",color:'#374151'}}>
+          <button onClick={onClose} style={{display:'flex',alignItems:'center',gap:'5px',background:'#f3f4f6',border:'none',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:'Nunito,sans-serif',color:'#374151'}}>
             ← Back
           </button>
           <div style={{fontWeight:'800',fontSize:'14px',flex:1,textAlign:'center',padding:'0 8px'}}>{title}</div>
@@ -411,7 +411,7 @@ function BOMBuilder({bom,onChange,rms,subs=[],allowSubs=true}) {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
             {['rm','sub'].map(t=>(
               <button key={t} onClick={()=>{setAddType(t);setAddRefId('');setAddRefNm('');}}
-                style={{padding:'7px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:addType===t?'#e8851b':'#e5e7eb',color:addType===t?'#fff':'#6b7280'}}>
+                style={{padding:'7px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Nunito,sans-serif',background:addType===t?'#e8851b':'#e5e7eb',color:addType===t?'#fff':'#6b7280'}}>
                 {t==='rm'?'🌾 Raw Material':'⚙️ Sub-Recipe'}
               </button>
             ))}
@@ -892,7 +892,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
         {['box','bag'].map(t=>(
           <button key={t} onClick={()=>setPt(t)}
-            style={{padding:'10px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:pt===t?'#e8851b':'#f3f4f6',color:pt===t?'#fff':'#6b7280'}}>
+            style={{padding:'10px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',background:pt===t?'#e8851b':'#f3f4f6',color:pt===t?'#fff':'#6b7280'}}>
             {t==='box'?'📦 Box / Carton':'👜 Bag / Bori'}
           </button>
         ))}
@@ -907,7 +907,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
           <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <label style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.8px'}}>Pouches per kg</label>
-              <button onClick={()=>setShowLamCalc(s=>!s)} style={{fontSize:'10px',fontWeight:'700',background:showLamCalc?'#e8851b':'#f3f4f6',color:showLamCalc?'#fff':'#e8851b',border:'none',borderRadius:'5px',padding:'2px 7px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
+              <button onClick={()=>setShowLamCalc(s=>!s)} style={{fontSize:'10px',fontWeight:'700',background:showLamCalc?'#e8851b':'#f3f4f6',color:showLamCalc?'#fff':'#e8851b',border:'none',borderRadius:'5px',padding:'2px 7px',cursor:'pointer',fontFamily:'Nunito,sans-serif'}}>
                 🧮 {showLamCalc?'Hide':'Calculate'}
               </button>
             </div>
@@ -934,7 +934,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
               <label style={{fontSize:'10px',fontWeight:'700',color:'rgba(255,255,255,0.6)',textTransform:'uppercase',display:'block',marginBottom:'5px'}}>Number of Layers</label>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'5px'}}>
                 {[2,3,4].map(n=>(
-                  <button key={n} onClick={()=>setLcLayers(n)} style={{padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',background:lcLayers===n?'#a78bfa':'#374151',color:'#fff'}}>{n}-Layer</button>
+                  <button key={n} onClick={()=>setLcLayers(n)} style={{padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',background:lcLayers===n?'#a78bfa':'#374151',color:'#fff'}}>{n}-Layer</button>
                 ))}
               </div>
             </div>
@@ -966,7 +966,7 @@ function VarForm({v:vt,productId,productName,onDone}) {
                   ))}
                 </div>
                 <button onClick={()=>{setLamPk(String(lcCalc.pouchesPerKg));setShowLamCalc(false);}}
-                  style={{width:'100%',background:'#a78bfa',color:'#fff',border:'none',borderRadius:'7px',padding:'9px',fontWeight:'800',fontSize:'13px',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>
+                  style={{width:'100%',background:'#a78bfa',color:'#fff',border:'none',borderRadius:'7px',padding:'9px',fontWeight:'800',fontSize:'13px',cursor:'pointer',fontFamily:'Nunito,sans-serif'}}>
                   ✓ Use {lcCalc.pouchesPerKg} pouches/kg
                 </button>
               </div>
@@ -1197,11 +1197,11 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
     <div style={{display:'flex',flexDirection:'column',height:`calc(100vh - ${HEADER_H}px)`,overflow:'hidden',background:cream}}>
       {/* Top bar */}
       <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 20px',flexShrink:0,background:'#fff',borderBottom:`1px solid ${border}`,boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
-        <button onClick={onBack} style={{background:cream2,border:`1px solid ${border}`,borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:'Sora,sans-serif',color:text2}}>← Back</button>
+        <button onClick={onBack} style={{background:cream2,border:`1px solid ${border}`,borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'13px',fontFamily:'Nunito,sans-serif',color:text2}}>← Back</button>
         <div style={{fontWeight:'800',fontSize:'16px',color:text1,flex:1}}>{current.name}</div>
         <div style={{fontSize:'11px',color:text3,textTransform:'uppercase',letterSpacing:'0.8px',marginRight:'8px'}}>{current.category} · 5% GST</div>
-        <button onClick={()=>setPForm(true)} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:orange}}>✏️ Edit</button>
-        <button onClick={delProd} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#c0392b'}}>🗑 Delete</button>
+        <button onClick={()=>setPForm(true)} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',color:orange}}>✏️ Edit</button>
+        <button onClick={delProd} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 14px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',color:'#c0392b'}}>🗑 Delete</button>
       </div>
 
       <div style={{display:'flex',flex:1,overflow:'hidden',width:'100%'}}>
@@ -1253,7 +1253,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
           <div style={{padding:'8px 14px 14px'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
               <div style={{fontSize:'10px',fontWeight:'800',color:text3,letterSpacing:'1.8px',textTransform:'uppercase'}}>Pack Variants ({myVars.length})</div>
-              <button onClick={()=>{setEditV(null);setVForm(true);}} style={{background:orange,color:'#fff',border:'none',borderRadius:'8px',padding:'6px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',boxShadow:'0 2px 6px rgba(232,133,27,0.3)'}}>+ Add Variant</button>
+              <button onClick={()=>{setEditV(null);setVForm(true);}} style={{background:orange,color:'#fff',border:'none',borderRadius:'8px',padding:'6px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',boxShadow:'0 2px 6px rgba(232,133,27,0.3)'}}>+ Add Variant</button>
             </div>
             {myVars.length===0?(
               <div style={{textAlign:'center',padding:'28px 12px',color:text3,fontSize:'12px',background:cream,borderRadius:'12px',border:`1.5px dashed ${border}`}}>No variants yet.<br/><span style={{color:orange,fontWeight:'700',cursor:'pointer'}} onClick={()=>setVForm(true)}>Add your first variant →</span></div>
@@ -1295,15 +1295,15 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
                   <div style={{display:'flex',gap:'6px',marginTop:'8px'}}>
                     {[{id:'local',label:`📍 Local ₹${selV.freightLocal||40}`},{id:'outstation',label:`✈️ Outstation ₹${selV.freightOutstation||60}`}].map(t=>(
                       <button key={t.id} onClick={()=>setFreightView(t.id)}
-                        style={{padding:'5px 11px',borderRadius:'7px',border:freightView===t.id?'none':`1px solid ${border}`,cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:freightView===t.id?orange:cream2,color:freightView===t.id?'#fff':text2}}>
+                        style={{padding:'5px 11px',borderRadius:'7px',border:freightView===t.id?'none':`1px solid ${border}`,cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Nunito,sans-serif',background:freightView===t.id?orange:cream2,color:freightView===t.id?'#fff':text2}}>
                         {t.label}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div style={{display:'flex',gap:'6px'}}>
-                  <button onClick={()=>{setEditV(selV);setVForm(true);}} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:orange}}>✏️ Edit</button>
-                  <button onClick={()=>delVar(selV)} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Sora,sans-serif',color:'#c0392b'}}>🗑</button>
+                  <button onClick={()=>{setEditV(selV);setVForm(true);}} style={{background:orangeL,border:'1px solid #fcd9a8',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',color:orange}}>✏️ Edit</button>
+                  <button onClick={()=>delVar(selV)} style={{background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:'8px',padding:'7px 12px',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',color:'#c0392b'}}>🗑</button>
                 </div>
               </div>
               {/* Cost breakdown via VarDetail */}
@@ -1354,7 +1354,7 @@ function Products({products,variants,rms,subs,oh}) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
         {[{id:'all',l:'All'},{id:'namkeen',l:'🍘 Namkeen'},{id:'snacks',l:'🍟 Snacks'}].map(c=>(
           <button key={c.id} onClick={()=>setCat(c.id)}
-            style={{padding:'7px 4px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Sora,sans-serif',background:cat===c.id?'#e8851b':'#f3f4f6',color:cat===c.id?'#fff':'#6b7280'}}>
+            style={{padding:'7px 4px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',fontFamily:'Nunito,sans-serif',background:cat===c.id?'#e8851b':'#f3f4f6',color:cat===c.id?'#fff':'#6b7280'}}>
             {c.l}
           </button>
         ))}
@@ -1412,11 +1412,15 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
 
   // Scheme helpers
   const toggleProd = id => setSelProds(prev=>{ const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s; });
-  const selectAll  = () => setSelProds(new Set(products.map(p=>p.id)));
+  const selectAll  = () => setSelProds(new Set(sortedProducts.map(p=>p.id)));
   const clearSel   = () => setSelProds(new Set());
 
   // Compute all rows
-  const rows = useMemo(()=>products.map(p=>{
+  const sortedProducts = useMemo(()=>[...products].sort((a,b)=>{
+    const order={namkeen:0,snacks:1};
+    return (order[a.category]??2)-(order[b.category]??2);
+  }),[products]);
+  const rows = useMemo(()=>sortedProducts.map(p=>{
     const pcBase = calcProduct(p,rms,subs);
     const pcSim  = calcProduct(p,simRms,subs);
     const pvs    = varByProd[p.id]||[];
@@ -1429,7 +1433,7 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
       wO:  calcVariant(v,pcSim, oh,v.freightOutstation||60,extra),
     }));
     return {p,pcBase,varRows};
-  }),[products,rms,simRms,subs,oh,varByProd,selProds,schemeAmt]);
+  }),[sortedProducts,rms,simRms,subs,oh,varByProd,selProds,schemeAmt]);
 
   const wiActive = hasWhatIf||hasScheme;
 
@@ -1464,10 +1468,10 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
             <span style={{fontSize:'11px',fontWeight:'700',color:'#6b7280',whiteSpace:'nowrap'}}>💰 Scheme ₹/unit:</span>
             <input type="number" value={schemeAmt} onChange={e=>setSchemeAmt(e.target.value)} placeholder="0"
               style={{width:'70px',border:'1.5px solid #e5e7eb',borderRadius:'6px',padding:'4px 8px',fontSize:'13px',fontFamily:'JetBrains Mono,monospace',background:'#fff'}} />
-            <button onClick={selectAll} style={{background:'#e8851b',color:'#fff',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Select All</button>
-            <button onClick={clearSel} style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Clear</button>
+            <button onClick={selectAll} style={{background:'#e8851b',color:'#fff',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Nunito,sans-serif'}}>Select All</button>
+            <button onClick={clearSel} style={{background:'#f3f4f6',color:'#6b7280',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Nunito,sans-serif'}}>Clear</button>
             {selProds.size>0&&<span style={{fontSize:'11px',color:'#e8851b',fontWeight:'700'}}>{selProds.size} product{selProds.size>1?'s':''} selected</span>}
-            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',color:'#dc2626',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Sora,sans-serif',marginLeft:'auto'}}>Reset RM ({changedCount})</button>}
+            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',color:'#dc2626',border:'none',borderRadius:'6px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',cursor:'pointer',fontFamily:'Nunito,sans-serif',marginLeft:'auto'}}>Reset RM ({changedCount})</button>}
           </div>
         </div>
 
@@ -1581,7 +1585,7 @@ function Dashboard({products,variants,rms,subs,oh,onGo}) {
             <div style={{fontSize:'11px',fontWeight:'800',color:'#9a6006',letterSpacing:'1.5px',textTransform:'uppercase'}}>
               🔮 What-If Ingredient Prices
             </div>
-            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',border:'none',borderRadius:'7px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',color:'#dc2626',cursor:'pointer',fontFamily:'Sora,sans-serif'}}>Reset RM ({changedCount})</button>}
+            {hasWhatIf&&<button onClick={resetAll} style={{background:'#fee2e2',border:'none',borderRadius:'7px',padding:'4px 10px',fontSize:'11px',fontWeight:'700',color:'#dc2626',cursor:'pointer',fontFamily:'Nunito,sans-serif'}}>Reset RM ({changedCount})</button>}
           </div>
           <input value={rmSearch} onChange={e=>setRmSearch(e.target.value)} placeholder="Search ingredient…"
             style={{width:'100%',border:'1.5px solid #e5e7eb',borderRadius:'8px',padding:'7px 12px',fontSize:'12px'}} />
@@ -1763,7 +1767,7 @@ function App() {
             style={{
               background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)',
               borderRadius:'8px', padding:'6px 14px', color:'#fff', cursor:'pointer',
-              fontSize:'12px', fontWeight:'700', fontFamily:'Sora,sans-serif',
+              fontSize:'12px', fontWeight:'700', fontFamily:'Nunito,sans-serif',
               display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap'
             }}
           >🔒 Logout</button>
@@ -1785,7 +1789,7 @@ function App() {
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{border:'none',background:'transparent',padding:'9px 4px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',borderTop:tab===t.id?'3px solid #e8851b':'3px solid transparent'}}>
             <span style={{fontSize:'17px'}}>{t.e}</span>
-            <span style={{fontSize:'9px',fontWeight:'700',fontFamily:'Sora,sans-serif',color:tab===t.id?'#e8851b':'#9ca3af',textTransform:'uppercase',letterSpacing:'0.4px'}}>{t.l}</span>
+            <span style={{fontSize:'9px',fontWeight:'700',fontFamily:'Nunito,sans-serif',color:tab===t.id?'#e8851b':'#9ca3af',textTransform:'uppercase',letterSpacing:'0.4px'}}>{t.l}</span>
           </button>
         ))}
       </div>
