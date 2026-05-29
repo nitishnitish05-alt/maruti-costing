@@ -14,6 +14,15 @@
     ::-webkit-scrollbar-thumb { background:#e8851b; border-radius:2px; }
     .mono { font-family:'JetBrains Mono',monospace; }
     input[type=number]::-webkit-inner-spin-button { opacity:1; }
+    /* ── Catalogue Print Styles ── */
+    @media print {
+      @page { margin: 15mm 12mm; size: A4; }
+      body * { visibility: hidden; }
+      #catalogue-print, #catalogue-print * { visibility: visible; }
+      #catalogue-print { position: fixed; top:0; left:0; width:100%; background:#fff; }
+    }
+    #catalogue-print { display:none; }
+    @media print { #catalogue-print { display:block !important; } }
   </style>
 </head>
 <body>
@@ -1122,6 +1131,7 @@ function ProdForm({prod,rms,subs,products=[],onDone}) {
   const [bom,setBom]=useState(prod?.bom||[]);
   const [outKg,setOutKg]=useState(prod?.batchOutputKg||'');
   const [notes,setNotes]=useState(prod?.notes||'');
+  const [subVar,setSubVar]=useState(prod?.subVariety||'');
   const [copyId,setCopyId]=useState('');
   const [copied,setCopied]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -1132,7 +1142,7 @@ function ProdForm({prod,rms,subs,products=[],onDone}) {
     if(!name||!outKg||!bom.length) return;
     setBusy(true);
     try{
-      const d={name,category:cat,bom,batchOutputKg:num(outKg),gstPct:5,notes:notes.trim()};
+      const d={name,category:cat,subVariety:subVar.trim(),bom,batchOutputKg:num(outKg),gstPct:5,notes:notes.trim()};
       if(prod) await db.collection(C.PROD).doc(prod.id).update(d);
       else await db.collection(C.PROD).add(d);
       onDone();
@@ -1143,6 +1153,7 @@ function ProdForm({prod,rms,subs,products=[],onDone}) {
     <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
       <Inp label="Product Name" value={name} onChange={setName} req placeholder="e.g. Aloo Bhujia" />
       <Sel label="Category" value={cat} onChange={setCat} opts={[{v:'namkeen',l:'🍘 Namkeen'},{v:'snacks',l:'🍟 Snacks (Fryums, etc.)'}]} />
+      <Inp label="Sub-Variety (e.g. Bhujia, Sev, Fryums, Matar)" value={subVar} onChange={setSubVar} placeholder="Optional — used for grouping in catalogue" />
       {/* Copy BOM from existing product */}
       {!prod&&(
         <div style={{background:'#eff6ff',border:'1.5px solid #bfdbfe',borderRadius:'10px',padding:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
@@ -1249,7 +1260,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
           {/* Product header */}
           <div style={{background:'linear-gradient(135deg,#e8851b,#f4a340)',padding:'14px',flexShrink:0}}>
             <div style={{fontWeight:'800',fontSize:'17px',color:'#fff'}}>{current.name}</div>
-            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.75)',marginTop:'3px',textTransform:'uppercase',letterSpacing:'0.8px'}}>{current.category} · {(current.bom||[]).length} ingredients · batch {current.batchOutputKg}kg</div>
+            <div style={{fontSize:'11px',color:'rgba(255,255,255,0.75)',marginTop:'3px',textTransform:'uppercase',letterSpacing:'0.8px'}}>{current.category}{current.subVariety?` · ${current.subVariety}`:''} · {(current.bom||[]).length} ingredients · batch {current.batchOutputKg}kg</div>
             {pc&&(
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginTop:'12px'}}>
                 {[{l:'Batch Cost',v:`₹${f2(pc.bomCost)}`},{l:'Namkeen ₹/kg',v:`₹${f2(pc.namkeenCostPerKg)}`},{l:'BOM Items',v:String((current.bom||[]).length)}].map(x=>(
@@ -1376,6 +1387,7 @@ function ProdDetail({prod,variants,rms,subs,oh,onBack}) {
 function Products({products,variants,rms,subs,oh}) {
   const [q,setQ]=useState('');
   const [cat,setCat]=useState('all');
+  const [sortBy,setSortBy]=useState('category'); // 'alpha' | 'category'
   const [form,setForm]=useState(false);
   const [selProd,setSelProd]=useState(null);
 
@@ -1392,13 +1404,38 @@ function Products({products,variants,rms,subs,oh}) {
     </div>
   );
 
-  const filtered=products.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())&&(cat==='all'||p.category===cat));
+  const filtered=useMemo(()=>{
+    let list=products.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())&&(cat==='all'||p.category===cat));
+    if(sortBy==='alpha') list=[...list].sort((a,b)=>a.name.localeCompare(b.name));
+    else list=[...list].sort((a,b)=>{
+      const co={namkeen:0,snacks:1};
+      const cd=(co[a.category]??2)-(co[b.category]??2);
+      if(cd!==0) return cd;
+      return (a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name);
+    });
+    return list;
+  },[products,q,cat,sortBy]);
 
   return (
     <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
       <SecHdr title={`Products (${products.length})`} action={<Btn sm onClick={()=>setForm(true)}>+ Add Product</Btn>} />
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search products…"
         style={{border:'1.5px solid #e5e7eb',borderRadius:'10px',padding:'10px 14px',fontSize:'13px',width:'100%'}} />
+      {/* Sort + Print controls */}
+      <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+        <div style={{fontSize:'11px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.5px'}}>Sort:</div>
+        {[{id:'category',l:'By Category'},{id:'alpha',l:'A → Z'}].map(s=>(
+          <button key={s.id} onClick={()=>setSortBy(s.id)}
+            style={{padding:'6px 12px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',
+              background:sortBy===s.id?'#1c1c2e':'#f3f4f6',color:sortBy===s.id?'#fff':'#6b7280'}}>
+            {s.l}
+          </button>
+        ))}
+        <button onClick={()=>window.__printCatalogue&&window.__printCatalogue()}
+          style={{marginLeft:'auto',padding:'6px 14px',borderRadius:'7px',border:'1.5px solid #e8851b',cursor:'pointer',fontWeight:'700',fontSize:'12px',fontFamily:'Nunito,sans-serif',background:'#fff4e6',color:'#e8851b'}}>
+          🖨️ Print Catalogue
+        </button>
+      </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
         {[{id:'all',l:'All'},{id:'namkeen',l:'🍘 Namkeen'},{id:'snacks',l:'🍟 Snacks'}].map(c=>(
           <button key={c.id} onClick={()=>setCat(c.id)}
@@ -1417,7 +1454,7 @@ function Products({products,variants,rms,subs,oh}) {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
               <div>
                 <div style={{fontWeight:'800',fontSize:'14px'}}>{prod.name}</div>
-                <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>{prod.category} · {(prod.bom||[]).length} BOM items · {pvs.length} variants</div>
+                <div style={{fontSize:'11px',color:'#9ca3af',marginTop:'2px'}}>{prod.category}{prod.subVariety?` · ${prod.subVariety}`:''} · {(prod.bom||[]).length} BOM items · {pvs.length} variants</div>
                 {pc&&<div style={{fontSize:'12px',color:'#e8851b',marginTop:'4px',fontFamily:'JetBrains Mono,monospace'}}>₹{f2(pc.namkeenCostPerKg)}/kg cost</div>}
               </div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'4px'}}>
@@ -1788,6 +1825,11 @@ function App() {
     {id:'settings',e:'🔧',l:'Settings'},
   ];
 
+  // Expose data for catalogue print generator
+  useEffect(()=>{
+    window.__catalogueData = {products:prods, variants:vars};
+  },[prods,vars]);
+
   if(loading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#f8f4ef'}}>
       <div style={{textAlign:'center'}}>
@@ -1844,6 +1886,112 @@ function App() {
     </div>
   );
 }
+
+// ── CATALOGUE PRINT GENERATOR ──────────────────────────────────────
+window.__printCatalogue = function() {
+  const el = document.getElementById('catalogue-print');
+  if(el) { el.remove(); }
+
+  // Get data from Firebase snapshot (already loaded in window.__appData)
+  const data = window.__catalogueData;
+  if(!data || !data.products || !data.variants) {
+    alert('No product data available. Please wait for data to load.');
+    return;
+  }
+
+  const {products, variants} = data;
+
+  // Group: category → subVariety → products
+  const catOrder = ['namkeen','snacks'];
+  const grouped = {};
+  catOrder.forEach(cat => {
+    const catProds = products.filter(p => p.category === cat);
+    if(!catProds.length) return;
+    grouped[cat] = {};
+    catProds.sort((a,b)=>(a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name));
+    catProds.forEach(p => {
+      const sv = p.subVariety || 'General';
+      if(!grouped[cat][sv]) grouped[cat][sv] = [];
+      grouped[cat][sv].push(p);
+    });
+  });
+
+  const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+  let sno = 1;
+
+  let html = `<div id="catalogue-print" style="font-family:'Nunito',sans-serif;padding:10px;background:#fff;color:#111;">
+    <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #e8851b;padding-bottom:12px;">
+      <div style="font-size:26px;font-weight:900;color:#1c1c1c;letter-spacing:0.5px;">Maruti Namkeen Product List</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;">Date: ${today}</div>
+    </div>`;
+
+  Object.entries(grouped).forEach(([cat, subVars]) => {
+    html += `<div style="margin-bottom:18px;">
+      <div style="background:#1c1c2e;color:#fff;padding:7px 12px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">
+        ${cat === 'namkeen' ? '🍘 NAMKEEN' : '🍟 SNACKS'}
+      </div>`;
+
+    Object.entries(subVars).forEach(([sv, prods]) => {
+      if(sv !== 'General') {
+        html += `<div style="background:#fff4e6;color:#c2610a;padding:5px 12px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;border-left:4px solid #e8851b;margin-bottom:6px;">${sv}</div>`;
+      }
+
+      // Table header
+      html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:13px;">
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th style="padding:6px 10px;text-align:center;width:40px;border:1px solid #e5e7eb;font-weight:700;">#</th>
+            <th style="padding:6px 10px;text-align:left;border:1px solid #e5e7eb;font-weight:700;">Product Name</th>
+            <th style="padding:6px 10px;text-align:center;width:70px;border:1px solid #e5e7eb;font-weight:700;">MRP</th>
+            <th style="padding:6px 10px;text-align:center;width:80px;border:1px solid #e5e7eb;font-weight:700;">Fill Wt</th>
+            <th style="padding:6px 10px;text-align:center;width:110px;border:1px solid #e5e7eb;font-weight:700;">Pack Size</th>
+            <th style="padding:6px 10px;text-align:center;width:90px;border:1px solid #e5e7eb;font-weight:700;">Pcs/Unit</th>
+          </tr>
+        </thead><tbody>`;
+
+      prods.forEach(p => {
+        const pvs = variants.filter(v => v.productId === p.id);
+        if(pvs.length === 0) {
+          html += `<tr style="background:#fff;">
+            <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;">${sno++}</td>
+            <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;">${p.name}</td>
+            <td colspan="4" style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;font-style:italic;">No variants configured</td>
+          </tr>`;
+        } else {
+          pvs.forEach((v, vi) => {
+            const packSize = v.packingType === 'box'
+              ? (v.carton?.type || 'Box')
+              : `${v.primaryBag?.sizeDesc || 'LDPE Bag'} / ${v.masterBag?.sizeDesc || 'Bori'}`;
+            const totalPouches = v.packingType === 'box'
+              ? (v.carton?.pouchesPerCarton || '—')
+              : ((v.primaryBag?.pouchesPerBag || 0) * (v.masterBag?.primaryBagsPerMaster || 0)) || '—';
+            const bg = vi % 2 === 0 ? '#fff' : '#fafafa';
+            html += `<tr style="background:${bg};">
+              ${vi===0 ? `<td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;vertical-align:top;" rowspan="${pvs.length}">${sno++}</td>
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;vertical-align:top;" rowspan="${pvs.length}">${p.name}</td>` : ''}
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">₹${v.mrp}</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;">${v.fillWeightG}g</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-size:11px;">${v.packingType==='box'?'📦':'👜'} ${packSize}</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">${totalPouches}</td>
+            </tr>`;
+          });
+        }
+      });
+
+      html += `</tbody></table>`;
+    });
+    html += `</div>`;
+  });
+
+  html += `<div style="text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;">
+    Maruti Namkeen &amp; Snacks &nbsp;·&nbsp; Printed on ${today}
+  </div></div>`;
+
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+  setTimeout(()=>window.print(), 200);
+};
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
