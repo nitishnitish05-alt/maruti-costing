@@ -1075,7 +1075,7 @@ function VarDetail({variant, pc, oh, freightOverride=null}) {
         <div style={{fontSize:'10px',fontWeight:'800',color:'#6b7280',letterSpacing:'1.8px',textTransform:'uppercase',marginBottom:'8px'}}>Per Pouch Cost</div>
         <div style={{borderRadius:'12px',overflow:'hidden',border:'1px solid '+border}}>
           <Row label="Namkeen material cost" note={`${variant.fillWeightG}g × ₹${f2(c.totalCostPerKg)}/kg (overhead ₹${f2(c.totalOH)}/kg)`} val={`₹${f2(c.nmCostPerPouch)}`} />
-          <Row label="Laminate cost" note={`₹${variant.laminate?.ratePerKg}/kg ÷ ${variant.laminate?.pouchesPerKg} pcs`} val={`₹${f2(c.lamCostPerPouch)}`} />
+          <Row label="Laminate cost" note={`₹${variant.laminate?.ratePerKg}/kg · ${variant.laminate?.pouchesPerKg} pcs/kg · ${f2(1000/(variant.laminate?.pouchesPerKg||1))}g per pouch`} val={`₹${f2(c.lamCostPerPouch)}`} />
           {c.toyCostPerPouch>0&&<Row label="Toy / Insert cost" note={`₹${f2(c.toyCostPerPouch)} × ${c.totalPouches} pcs = ₹${f2(c.toyCostPerPouch*c.totalPouches)} total`} val={`₹${f2(c.toyCostPerPouch)}`} color="#16a34a" />}
           <Row label="Total cost per pouch" val={`₹${f2(c.totalCostPerPouch)}`} bold topBdr />
         </div>
