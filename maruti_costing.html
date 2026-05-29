@@ -31,6 +31,117 @@
 <!-- Firebase 10 Compat -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<!-- Catalogue Print Generator (plain JS, not compiled by Babel) -->
+<script>
+
+// ── CATALOGUE PRINT GENERATOR ──────────────────────────────────────
+window.__printCatalogue = function() {
+  const el = document.getElementById('catalogue-print');
+  if(el) { el.remove(); }
+
+  // Get data from Firebase snapshot (already loaded in window.__appData)
+  const data = window.__catalogueData;
+  if(!data || !data.products || !data.variants) {
+    alert('No product data available. Please wait for data to load.');
+    return;
+  }
+
+  const {products, variants} = data;
+
+  // Group: category → subVariety → products
+  const catOrder = ['namkeen','snacks'];
+  const grouped = {};
+  catOrder.forEach(cat => {
+    const catProds = products.filter(p => p.category === cat);
+    if(!catProds.length) return;
+    grouped[cat] = {};
+    catProds.sort((a,b)=>(a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name));
+    catProds.forEach(p => {
+      const sv = p.subVariety || 'General';
+      if(!grouped[cat][sv]) grouped[cat][sv] = [];
+      grouped[cat][sv].push(p);
+    });
+  });
+
+  const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+  let sno = 1;
+
+  let html = `<div id="catalogue-print" style="font-family:'Nunito',sans-serif;padding:10px;background:#fff;color:#111;">
+    <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #e8851b;padding-bottom:12px;">
+      <div style="font-size:26px;font-weight:900;color:#1c1c1c;letter-spacing:0.5px;">Maruti Namkeen Product List</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;">Date: ${today}</div>
+    </div>`;
+
+  Object.entries(grouped).forEach(([cat, subVars]) => {
+    html += `<div style="margin-bottom:18px;">
+      <div style="background:#1c1c2e;color:#fff;padding:7px 12px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">
+        ${cat === 'namkeen' ? '🍘 NAMKEEN' : '🍟 SNACKS'}
+      </div>`;
+
+    Object.entries(subVars).forEach(([sv, prods]) => {
+      if(sv !== 'General') {
+        html += `<div style="background:#fff4e6;color:#c2610a;padding:5px 12px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;border-left:4px solid #e8851b;margin-bottom:6px;">${sv}</div>`;
+      }
+
+      // Table header
+      html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:13px;">
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th style="padding:6px 10px;text-align:center;width:40px;border:1px solid #e5e7eb;font-weight:700;">#</th>
+            <th style="padding:6px 10px;text-align:left;border:1px solid #e5e7eb;font-weight:700;">Product Name</th>
+            <th style="padding:6px 10px;text-align:center;width:70px;border:1px solid #e5e7eb;font-weight:700;">MRP</th>
+            <th style="padding:6px 10px;text-align:center;width:80px;border:1px solid #e5e7eb;font-weight:700;">Fill Wt</th>
+            <th style="padding:6px 10px;text-align:center;width:110px;border:1px solid #e5e7eb;font-weight:700;">Pack Size</th>
+            <th style="padding:6px 10px;text-align:center;width:90px;border:1px solid #e5e7eb;font-weight:700;">Pcs/Unit</th>
+          </tr>
+        </thead><tbody>`;
+
+      prods.forEach(p => {
+        const pvs = variants.filter(v => v.productId === p.id);
+        if(pvs.length === 0) {
+          html += `<tr style="background:#fff;">
+            <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;">${sno++}</td>
+            <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;">${p.name}</td>
+            <td colspan="4" style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;font-style:italic;">No variants configured</td>
+          </tr>`;
+        } else {
+          pvs.forEach((v, vi) => {
+            const packSize = v.packingType === 'box'
+              ? (v.carton?.type || 'Box')
+              : `${v.primaryBag?.sizeDesc || 'LDPE Bag'} / ${v.masterBag?.sizeDesc || 'Bori'}`;
+            const totalPouches = v.packingType === 'box'
+              ? (v.carton?.pouchesPerCarton || '—')
+              : ((v.primaryBag?.pouchesPerBag || 0) * (v.masterBag?.primaryBagsPerMaster || 0)) || '—';
+            const bg = vi % 2 === 0 ? '#fff' : '#fafafa';
+            html += `<tr style="background:${bg};">
+              ${vi===0 ? `<td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;vertical-align:top;" rowspan="${pvs.length}">${sno++}</td>
+              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;vertical-align:top;" rowspan="${pvs.length}">${p.name}</td>` : ''}
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">₹${v.mrp}</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;">${v.fillWeightG}g</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-size:11px;">${v.packingType==='box'?'📦':'👜'} ${packSize}</td>
+              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">${totalPouches}</td>
+            </tr>`;
+          });
+        }
+      });
+
+      html += `</tbody></table>`;
+    });
+    html += `</div>`;
+  });
+
+  html += `<div style="text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;">
+    Maruti Namkeen &amp; Snacks &nbsp;·&nbsp; Printed on ${today}
+  </div></div>`;
+
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+  setTimeout(()=>window.print(), 200);
+};
+
+</script>
+
 <!-- React 18 -->
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -1394,6 +1505,19 @@ function Products({products,variants,rms,subs,oh}) {
   // Keep selected prod in sync with live data
   const liveSel = selProd?products.find(p=>p.id===selProd.id)||selProd:null;
 
+  // Compute BEFORE any early return (Rules of Hooks — no hooks after conditional return)
+  const filtered=(()=>{
+    let list=products.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())&&(cat==='all'||p.category===cat));
+    if(sortBy==='alpha') list=[...list].sort((a,b)=>a.name.localeCompare(b.name));
+    else list=[...list].sort((a,b)=>{
+      const co={namkeen:0,snacks:1};
+      const cd=(co[a.category]??2)-(co[b.category]??2);
+      if(cd!==0) return cd;
+      return (a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name);
+    });
+    return list;
+  })();
+
   if(liveSel) return (
     <div>
       <div style={{padding:'12px 16px',borderBottom:'1px solid #f3f4f6',display:'flex',alignItems:'center',gap:'10px',background:'#fff',position:'sticky',top:0,zIndex:5}}>
@@ -1404,17 +1528,7 @@ function Products({products,variants,rms,subs,oh}) {
     </div>
   );
 
-  const filtered=useMemo(()=>{
-    let list=products.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())&&(cat==='all'||p.category===cat));
-    if(sortBy==='alpha') list=[...list].sort((a,b)=>a.name.localeCompare(b.name));
-    else list=[...list].sort((a,b)=>{
-      const co={namkeen:0,snacks:1};
-      const cd=(co[a.category]??2)-(co[b.category]??2);
-      if(cd!==0) return cd;
-      return (a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name);
-    });
-    return list;
-  },[products,q,cat,sortBy]);
+
 
   return (
     <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
@@ -1887,111 +2001,6 @@ function App() {
   );
 }
 
-// ── CATALOGUE PRINT GENERATOR ──────────────────────────────────────
-window.__printCatalogue = function() {
-  const el = document.getElementById('catalogue-print');
-  if(el) { el.remove(); }
-
-  // Get data from Firebase snapshot (already loaded in window.__appData)
-  const data = window.__catalogueData;
-  if(!data || !data.products || !data.variants) {
-    alert('No product data available. Please wait for data to load.');
-    return;
-  }
-
-  const {products, variants} = data;
-
-  // Group: category → subVariety → products
-  const catOrder = ['namkeen','snacks'];
-  const grouped = {};
-  catOrder.forEach(cat => {
-    const catProds = products.filter(p => p.category === cat);
-    if(!catProds.length) return;
-    grouped[cat] = {};
-    catProds.sort((a,b)=>(a.subVariety||'').localeCompare(b.subVariety||'')||a.name.localeCompare(b.name));
-    catProds.forEach(p => {
-      const sv = p.subVariety || 'General';
-      if(!grouped[cat][sv]) grouped[cat][sv] = [];
-      grouped[cat][sv].push(p);
-    });
-  });
-
-  const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
-  let sno = 1;
-
-  let html = `<div id="catalogue-print" style="font-family:'Nunito',sans-serif;padding:10px;background:#fff;color:#111;">
-    <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #e8851b;padding-bottom:12px;">
-      <div style="font-size:26px;font-weight:900;color:#1c1c1c;letter-spacing:0.5px;">Maruti Namkeen Product List</div>
-      <div style="font-size:13px;color:#6b7280;margin-top:4px;">Date: ${today}</div>
-    </div>`;
-
-  Object.entries(grouped).forEach(([cat, subVars]) => {
-    html += `<div style="margin-bottom:18px;">
-      <div style="background:#1c1c2e;color:#fff;padding:7px 12px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:1px;border-radius:4px;margin-bottom:10px;">
-        ${cat === 'namkeen' ? '🍘 NAMKEEN' : '🍟 SNACKS'}
-      </div>`;
-
-    Object.entries(subVars).forEach(([sv, prods]) => {
-      if(sv !== 'General') {
-        html += `<div style="background:#fff4e6;color:#c2610a;padding:5px 12px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;border-left:4px solid #e8851b;margin-bottom:6px;">${sv}</div>`;
-      }
-
-      // Table header
-      html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:13px;">
-        <thead>
-          <tr style="background:#f3f4f6;">
-            <th style="padding:6px 10px;text-align:center;width:40px;border:1px solid #e5e7eb;font-weight:700;">#</th>
-            <th style="padding:6px 10px;text-align:left;border:1px solid #e5e7eb;font-weight:700;">Product Name</th>
-            <th style="padding:6px 10px;text-align:center;width:70px;border:1px solid #e5e7eb;font-weight:700;">MRP</th>
-            <th style="padding:6px 10px;text-align:center;width:80px;border:1px solid #e5e7eb;font-weight:700;">Fill Wt</th>
-            <th style="padding:6px 10px;text-align:center;width:110px;border:1px solid #e5e7eb;font-weight:700;">Pack Size</th>
-            <th style="padding:6px 10px;text-align:center;width:90px;border:1px solid #e5e7eb;font-weight:700;">Pcs/Unit</th>
-          </tr>
-        </thead><tbody>`;
-
-      prods.forEach(p => {
-        const pvs = variants.filter(v => v.productId === p.id);
-        if(pvs.length === 0) {
-          html += `<tr style="background:#fff;">
-            <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;">${sno++}</td>
-            <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;">${p.name}</td>
-            <td colspan="4" style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;color:#9ca3af;font-style:italic;">No variants configured</td>
-          </tr>`;
-        } else {
-          pvs.forEach((v, vi) => {
-            const packSize = v.packingType === 'box'
-              ? (v.carton?.type || 'Box')
-              : `${v.primaryBag?.sizeDesc || 'LDPE Bag'} / ${v.masterBag?.sizeDesc || 'Bori'}`;
-            const totalPouches = v.packingType === 'box'
-              ? (v.carton?.pouchesPerCarton || '—')
-              : ((v.primaryBag?.pouchesPerBag || 0) * (v.masterBag?.primaryBagsPerMaster || 0)) || '—';
-            const bg = vi % 2 === 0 ? '#fff' : '#fafafa';
-            html += `<tr style="background:${bg};">
-              ${vi===0 ? `<td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;vertical-align:top;" rowspan="${pvs.length}">${sno++}</td>
-              <td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:700;vertical-align:top;" rowspan="${pvs.length}">${p.name}</td>` : ''}
-              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">₹${v.mrp}</td>
-              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;">${v.fillWeightG}g</td>
-              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-size:11px;">${v.packingType==='box'?'📦':'👜'} ${packSize}</td>
-              <td style="padding:6px 10px;text-align:center;border:1px solid #e5e7eb;font-weight:700;">${totalPouches}</td>
-            </tr>`;
-          });
-        }
-      });
-
-      html += `</tbody></table>`;
-    });
-    html += `</div>`;
-  });
-
-  html += `<div style="text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;">
-    Maruti Namkeen &amp; Snacks &nbsp;·&nbsp; Printed on ${today}
-  </div></div>`;
-
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  document.body.appendChild(div.firstChild);
-  setTimeout(()=>window.print(), 200);
-};
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
